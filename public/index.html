@@ -377,7 +377,6 @@
             cursor: not-allowed;
         }
 
-        /* Notification Styles */
         .notifications {
             position: fixed;
             top: 16px;
@@ -533,17 +532,15 @@
     </div>
 
     <script>
-        // Configuration
         const WS_URL = window.location.protocol === 'https:' 
             ? `wss://${window.location.host}` 
             : `ws://${window.location.hostname}:${window.location.port || 3000}`;
         
         console.log('WebSocket URL:', WS_URL);
         
-        // State
         const state = {
             currentChannel: 'general',
-            currentChatType: 'channel', // 'channel' or 'private'
+            currentChatType: 'channel',
             currentPrivateChat: null,
             username: '',
             ws: null,
@@ -552,10 +549,9 @@
             privateMessages: {},
             users: [],
             typingUsers: {},
-            privateChats: {} // chatId -> username
+            privateChats: {}
         };
 
-        // DOM Elements
         const messageArea = document.getElementById('messageArea');
         const messageInput = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
@@ -571,17 +567,14 @@
 
         let typingTimeout;
 
-        // Initialize
         function init() {
             const savedUsername = prompt('Enter your username:', 'User') || 'User';
             state.username = savedUsername;
             usernameDisplay.textContent = savedUsername;
             userAvatar.textContent = savedUsername.charAt(0).toUpperCase();
-
             connectWebSocket();
         }
 
-        // WebSocket connection
         function connectWebSocket() {
             console.log('Attempting to connect to:', WS_URL);
             
@@ -625,7 +618,6 @@
                 state.connected = false;
                 connectionStatus.classList.remove('connected');
                 sendBtn.disabled = true;
-                
                 setTimeout(connectWebSocket, 3000);
             };
 
@@ -634,7 +626,6 @@
             };
         }
 
-        // Handle server messages
         function handleServerMessage(data) {
             console.log('Handling message type:', data.type);
             
@@ -677,13 +668,13 @@
                     break;
                 case 'error':
                     console.error('Server error:', data.message);
+                    alert('Error: ' + data.message);
                     break;
                 default:
                     console.log('Unknown message type:', data.type);
             }
         }
 
-        // Send message to server
         function send(data) {
             if (state.ws && state.ws.readyState === WebSocket.OPEN) {
                 const jsonData = JSON.stringify(data);
@@ -694,49 +685,51 @@
             }
         }
 
-        // Show private chat request notification
         function showPrivateChatRequest(from, requestId) {
+            console.log('Showing private chat request from:', from);
             const notif = document.createElement('div');
             notif.className = 'notification';
+            notif.dataset.from = from;
             notif.innerHTML = `
                 <div class="notification-header">Private Chat Request</div>
                 <div class="notification-body">${from} wants to start a private chat with you</div>
                 <div class="notification-actions">
-                    <button class="notification-btn btn-accept" onclick="respondToPrivateChat('${from}', true, this.parentElement.parentElement)">Accept</button>
-                    <button class="notification-btn btn-decline" onclick="respondToPrivateChat('${from}', false, this.parentElement.parentElement)">Decline</button>
+                    <button class="notification-btn btn-accept">Accept</button>
+                    <button class="notification-btn btn-decline">Decline</button>
                 </div>
             `;
+            
+            notif.querySelector('.btn-accept').addEventListener('click', () => {
+                respondToPrivateChat(from, true);
+                notif.remove();
+            });
+            
+            notif.querySelector('.btn-decline').addEventListener('click', () => {
+                respondToPrivateChat(from, false);
+                notif.remove();
+            });
             
             notifications.appendChild(notif);
         }
 
-        // Respond to private chat request
-        window.respondToPrivateChat = function(from, accepted, notifElement) {
+        function respondToPrivateChat(from, accepted) {
+            console.log('Responding to private chat:', from, accepted);
             send({
                 type: 'privateChatResponse',
                 from: from,
                 accepted: accepted
             });
+        }
 
-            notifElement.remove();
-        };
-
-        // Handle private chat accepted
         function handlePrivateChatAccepted(chatId, withUser) {
             console.log(`Private chat opened: ${chatId} with ${withUser}`);
             
             state.privateChats[chatId] = withUser;
-            
-            // Add DM to list
             addDMToList(chatId, withUser);
-            
-            // Switch to private chat
             switchToPrivateChat(chatId, withUser);
         }
 
-        // Add DM to list
         function addDMToList(chatId, username) {
-            // Check if already exists
             if (document.querySelector(`[data-chat-id="${chatId}"]`)) return;
             
             const dmItem = document.createElement('div');
@@ -745,8 +738,14 @@
             dmItem.dataset.username = username;
             dmItem.innerHTML = `
                 <span class="channel-name">${username}</span>
-                <button class="close-dm" onclick="closeDM('${chatId}', event)">×</button>
+                <button class="close-dm">×</button>
             `;
+            
+            const closeBtn = dmItem.querySelector('.close-dm');
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                closeDM(chatId);
+            });
             
             dmItem.addEventListener('click', () => {
                 switchToPrivateChat(chatId, username);
@@ -755,23 +754,20 @@
             dmList.appendChild(dmItem);
         }
 
-        // Close DM
-        window.closeDM = function(chatId, event) {
-            event.stopPropagation();
+        function closeDM(chatId) {
             const dmItem = document.querySelector(`[data-chat-id="${chatId}"]`);
             if (dmItem) dmItem.remove();
             
             delete state.privateChats[chatId];
             delete state.privateMessages[chatId];
             
-            // Switch back to general if this was active
             if (state.currentPrivateChat === chatId) {
                 switchChannel('general');
             }
-        };
+        }
 
-        // Switch to private chat
         function switchToPrivateChat(chatId, username) {
+            console.log('Switching to private chat:', chatId, username);
             state.currentChatType = 'private';
             state.currentPrivateChat = chatId;
             state.currentChannel = username;
@@ -780,12 +776,10 @@
             currentChannelEl.classList.add('private');
             messageInput.placeholder = `Message @${username}`;
             
-            // Update active state
             document.querySelectorAll('.channel').forEach(ch => ch.classList.remove('active'));
             const dmItem = document.querySelector(`[data-chat-id="${chatId}"]`);
             if (dmItem) dmItem.classList.add('active');
             
-            // Load history
             if (!state.privateMessages[chatId]) {
                 send({
                     type: 'getPrivateHistory',
@@ -799,47 +793,8 @@
             updateTypingIndicator();
         }
 
-        // Event listeners
-        sendBtn.addEventListener('click', (e) => {
-            console.log('Send button clicked');
-            e.preventDefault();
-            addMessage();
-        });
-        
-        messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                console.log('Enter key pressed');
-                e.preventDefault();
-                addMessage();
-            }
-        });
-
-        messageInput.addEventListener('input', () => {
-            if (messageInput.value.length > 0) {
-                startTyping();
-            } else {
-                stopTyping();
-            }
-        });
-
-        channelList.addEventListener('click', (e) => {
-            const channel = e.target.closest('.channel');
-            if (channel && channel.dataset.channel) {
-                switchChannel(channel.dataset.channel);
-            }
-        });
-
-        // Initialize app
-        console.log('Initializing chat application...');
-        init();
-    </script>
-</body>
-</html>
-            updateTypingIndicator();
-        }
-
-        // Request private chat
         function requestPrivateChat(username) {
+            console.log('Requesting private chat with:', username);
             if (username === state.username) return;
             
             send({
@@ -848,7 +803,6 @@
             });
         }
 
-        // Add message
         function addMessage() {
             const text = messageInput.value.trim();
             
@@ -856,6 +810,7 @@
 
             if (state.currentChatType === 'private') {
                 const targetUsername = state.privateChats[state.currentPrivateChat];
+                console.log('Sending private message to:', targetUsername);
                 send({
                     type: 'privateMessage',
                     chatId: state.currentPrivateChat,
@@ -874,7 +829,6 @@
             stopTyping();
         }
 
-        // Add message to channel
         function addMessageToChannel(message) {
             if (!state.messages[message.channel]) {
                 state.messages[message.channel] = [];
@@ -886,8 +840,8 @@
             }
         }
 
-        // Add private message
         function addPrivateMessage(message) {
+            console.log('Adding private message:', message);
             if (!state.privateMessages[message.chatId]) {
                 state.privateMessages[message.chatId] = [];
             }
@@ -898,7 +852,6 @@
             }
         }
 
-        // Load history
         function loadHistory(channel, messages) {
             state.messages[channel] = messages;
             if (channel === state.currentChannel && state.currentChatType === 'channel') {
@@ -906,15 +859,14 @@
             }
         }
 
-        // Load private history
         function loadPrivateHistory(chatId, messages) {
+            console.log('Loading private history:', chatId, messages);
             state.privateMessages[chatId] = messages;
             if (chatId === state.currentPrivateChat && state.currentChatType === 'private') {
                 renderMessages();
             }
         }
 
-        // Render messages
         function renderMessages() {
             let messages;
             if (state.currentChatType === 'private') {
@@ -923,6 +875,7 @@
                 messages = state.messages[state.currentChannel] || [];
             }
             
+            console.log('Rendering messages:', messages.length);
             messageArea.innerHTML = '';
 
             messages.forEach(msg => {
@@ -963,25 +916,33 @@
             messageArea.scrollTop = messageArea.scrollHeight;
         }
 
-        // Update user list
         function updateUserList(users) {
             state.users = users;
             userList.innerHTML = '';
             
             users.forEach(username => {
-                if (username === state.username) return; // Don't show self
+                if (username === state.username) return;
                 
                 const userEl = document.createElement('div');
                 userEl.className = 'user-list-item';
-                userEl.innerHTML = `
-                    <span class="user-name">${username}</span>
-                    <button class="dm-btn" onclick="requestPrivateChat('${username}')">DM</button>
-                `;
+                
+                const userName = document.createElement('span');
+                userName.className = 'user-name';
+                userName.textContent = username;
+                
+                const dmBtn = document.createElement('button');
+                dmBtn.className = 'dm-btn';
+                dmBtn.textContent = 'DM';
+                dmBtn.addEventListener('click', () => {
+                    requestPrivateChat(username);
+                });
+                
+                userEl.appendChild(userName);
+                userEl.appendChild(dmBtn);
                 userList.appendChild(userEl);
             });
         }
 
-        // Typing indicator
         function handleTypingIndicator(data) {
             if (state.currentChatType === 'private') {
                 if (data.isPrivate && data.username === state.privateChats[state.currentPrivateChat]) {
@@ -1058,14 +1019,12 @@
             }
         }
 
-        // Format time
         function formatTime(date) {
             const hours = date.getHours().toString().padStart(2, '0');
             const minutes = date.getMinutes().toString().padStart(2, '0');
             return `${hours}:${minutes}`;
         }
 
-        // Switch channel
         function switchChannel(channel) {
             console.log('Switching to channel:', channel);
             state.currentChatType = 'channel';
@@ -1079,16 +1038,3 @@
                 ch.classList.remove('active');
                 if (ch.dataset.channel === channel) {
                     ch.classList.add('active');
-                }
-            });
-
-            if (!state.messages[channel]) {
-                send({
-                    type: 'getHistory',
-                    channel: channel
-                });
-            } else {
-                renderMessages();
-            }
-
-            state.typingUsers = {};
