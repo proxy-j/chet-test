@@ -327,6 +327,19 @@
             word-wrap: break-word;
         }
 
+        .message-image {
+            margin-top: 8px;
+            max-width: 400px;
+            max-height: 300px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .message-image:hover {
+            transform: scale(1.02);
+        }
+
         .input-area {
             padding: 16px;
         }
@@ -337,6 +350,21 @@
             padding: 12px;
             display: flex;
             align-items: center;
+        }
+
+        .attach-btn {
+            background: transparent;
+            border: none;
+            color: #b9bbbe;
+            cursor: pointer;
+            font-size: 20px;
+            padding: 4px 8px;
+            margin-right: 8px;
+            transition: color 0.2s;
+        }
+
+        .attach-btn:hover {
+            color: #dcddde;
         }
 
         .message-input {
@@ -375,6 +403,39 @@
         .send-btn:disabled {
             background: #4e5058;
             cursor: not-allowed;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .image-preview {
+            position: relative;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .preview-image {
+            max-width: 100px;
+            max-height: 100px;
+            border-radius: 4px;
+        }
+
+        .remove-preview {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ed4245;
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .notifications {
@@ -454,6 +515,43 @@
             background: #c03537;
         }
 
+        .image-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .image-modal.active {
+            display: flex;
+        }
+
+        .modal-image {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 8px;
+        }
+
+        .close-modal {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #ed4245;
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
         ::-webkit-scrollbar {
             width: 8px;
         }
@@ -474,6 +572,10 @@
 </head>
 <body>
     <div class="notifications" id="notifications"></div>
+    <div class="image-modal" id="imageModal">
+        <button class="close-modal" onclick="closeImageModal()">×</button>
+        <img class="modal-image" id="modalImage" src="" alt="Full size image">
+    </div>
 
     <div class="container">
         <div class="sidebar">
@@ -517,6 +619,9 @@
             <div class="messages" id="messageArea"></div>
             <div class="input-area">
                 <div class="input-wrapper">
+                    <input type="file" class="file-input" id="fileInput" accept="image/*">
+                    <button class="attach-btn" id="attachBtn">📎</button>
+                    <div id="imagePreviewContainer"></div>
                     <input type="text" class="message-input" id="messageInput" placeholder="Message #general">
                     <button class="send-btn" id="sendBtn">Send</button>
                 </div>
@@ -526,31 +631,66 @@
 
     <script>
         const WS_URL = window.location.protocol === 'https:' ? `wss://${window.location.host}` : `ws://${window.location.hostname}:${window.location.port || 3000}`;
-        const state = {currentChannel:'general',currentChatType:'channel',currentPrivateChat:null,username:'',ws:null,connected:false,messages:{},privateMessages:{},users:[],typingUsers:{},privateChats:{}};
-        const messageArea=document.getElementById('messageArea'),messageInput=document.getElementById('messageInput'),sendBtn=document.getElementById('sendBtn'),channelList=document.getElementById('channelList'),dmList=document.getElementById('dmList'),currentChannelEl=document.getElementById('currentChannel'),usernameDisplay=document.getElementById('usernameDisplay'),userAvatar=document.getElementById('userAvatar'),connectionStatus=document.getElementById('connectionStatus'),userList=document.getElementById('userList'),typingIndicator=document.getElementById('typingIndicator'),notifications=document.getElementById('notifications');
+        const state = {currentChannel:'general',currentChatType:'channel',currentPrivateChat:null,username:'',ws:null,connected:false,messages:{},privateMessages:{},users:[],typingUsers:{},privateChats:{},selectedImage:null};
+        const messageArea=document.getElementById('messageArea'),messageInput=document.getElementById('messageInput'),sendBtn=document.getElementById('sendBtn'),channelList=document.getElementById('channelList'),dmList=document.getElementById('dmList'),currentChannelEl=document.getElementById('currentChannel'),usernameDisplay=document.getElementById('usernameDisplay'),userAvatar=document.getElementById('userAvatar'),connectionStatus=document.getElementById('connectionStatus'),userList=document.getElementById('userList'),typingIndicator=document.getElementById('typingIndicator'),notifications=document.getElementById('notifications'),fileInput=document.getElementById('fileInput'),attachBtn=document.getElementById('attachBtn'),imagePreviewContainer=document.getElementById('imagePreviewContainer'),imageModal=document.getElementById('imageModal'),modalImage=document.getElementById('modalImage');
         let typingTimeout;
+
         function init(){const n=prompt('Enter your username:','User')||'User';state.username=n;usernameDisplay.textContent=n;userAvatar.textContent=n.charAt(0).toUpperCase();connectWebSocket()}
+        
         function connectWebSocket(){try{state.ws=new WebSocket(WS_URL)}catch(e){setTimeout(connectWebSocket,3000);return}state.ws.onopen=()=>{state.connected=true;connectionStatus.classList.add('connected');sendBtn.disabled=false;send({type:'join',username:state.username});send({type:'getHistory',channel:state.currentChannel})};state.ws.onmessage=e=>{try{handleServerMessage(JSON.parse(e.data))}catch(er){}};state.ws.onclose=()=>{state.connected=false;connectionStatus.classList.remove('connected');sendBtn.disabled=true;setTimeout(connectWebSocket,3000)};state.ws.onerror=e=>{}}
+        
         function handleServerMessage(d){switch(d.type){case'message':addMessageToChannel(d.message);break;case'history':loadHistory(d.channel,d.messages);break;case'userList':updateUserList(d.users);break;case'typing':handleTypingIndicator(d);break;case'privateChatRequest':showPrivateChatRequest(d.from);break;case'privateChatAccepted':handlePrivateChatAccepted(d.chatId,d.with);break;case'privateChatRejected':alert(`${d.by} declined`);break;case'privateMessage':addPrivateMessage(d.message);break;case'privateHistory':loadPrivateHistory(d.chatId,d.messages);break}}
+        
         function send(d){if(state.ws&&state.ws.readyState===WebSocket.OPEN)state.ws.send(JSON.stringify(d))}
+        
         function showPrivateChatRequest(from){const n=document.createElement('div');n.className='notification';n.innerHTML=`<div class="notification-header">Private Chat Request</div><div class="notification-body">${from} wants to chat</div><div class="notification-actions"><button class="notification-btn btn-accept">Accept</button><button class="notification-btn btn-decline">Decline</button></div>`;n.querySelector('.btn-accept').onclick=()=>{send({type:'privateChatResponse',from,accepted:true});n.remove()};n.querySelector('.btn-decline').onclick=()=>{send({type:'privateChatResponse',from,accepted:false});n.remove()};notifications.appendChild(n)}
+        
         function handlePrivateChatAccepted(chatId,withUser){state.privateChats[chatId]=withUser;addDMToList(chatId,withUser);switchToPrivateChat(chatId,withUser)}
+        
         function addDMToList(chatId,username){if(document.querySelector(`[data-chat-id="${chatId}"]`))return;const d=document.createElement('div');d.className='channel private';d.dataset.chatId=chatId;d.innerHTML=`<span class="channel-name">${username}</span><button class="close-dm">×</button>`;d.querySelector('.close-dm').onclick=e=>{e.stopPropagation();d.remove();delete state.privateChats[chatId];delete state.privateMessages[chatId];if(state.currentPrivateChat===chatId)switchChannel('general')};d.onclick=()=>switchToPrivateChat(chatId,username);dmList.appendChild(d)}
+        
         function switchToPrivateChat(chatId,username){state.currentChatType='private';state.currentPrivateChat=chatId;state.currentChannel=username;currentChannelEl.textContent=username;currentChannelEl.classList.add('private');messageInput.placeholder=`Message @${username}`;document.querySelectorAll('.channel').forEach(c=>c.classList.remove('active'));const dm=document.querySelector(`[data-chat-id="${chatId}"]`);if(dm)dm.classList.add('active');if(!state.privateMessages[chatId])send({type:'getPrivateHistory',chatId});else renderMessages();state.typingUsers={};updateTypingIndicator()}
+        
         function requestPrivateChat(username){if(username===state.username)return;send({type:'privateChatRequest',targetUsername:username})}
-        function addMessage(){const t=messageInput.value.trim();if(!t||!state.connected)return;if(state.currentChatType==='private')send({type:'privateMessage',chatId:state.currentPrivateChat,text:t,targetUsername:state.privateChats[state.currentPrivateChat]});else send({type:'message',channel:state.currentChannel,text:t});messageInput.value='';stopTyping()}
+        
+        async function compressImage(file){return new Promise((resolve)=>{const reader=new FileReader();reader.onload=e=>{const img=new Image();img.onload=()=>{const canvas=document.createElement('canvas');let width=img.width,height=img.height;const maxSize=800;if(width>height){if(width>maxSize){height*=maxSize/width;width=maxSize}}else{if(height>maxSize){width*=maxSize/height;height=maxSize}}canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,width,height);canvas.toBlob(blob=>{const compressedReader=new FileReader();compressedReader.onloadend=()=>resolve({data:compressedReader.result,name:file.name});compressedReader.readAsDataURL(blob)},'image/jpeg',0.7)};img.src=e.target.result};reader.readAsDataURL(file)})}
+        
+        attachBtn.onclick=()=>fileInput.click();
+        
+        fileInput.onchange=async(e)=>{const file=e.target.files[0];if(!file)return;const compressed=await compressImage(file);state.selectedImage=compressed;imagePreviewContainer.innerHTML=`<div class="image-preview"><img src="${compressed.data}" class="preview-image"><button class="remove-preview">×</button></div>`;imagePreviewContainer.querySelector('.remove-preview').onclick=()=>{state.selectedImage=null;imagePreviewContainer.innerHTML='';fileInput.value=''}};
+        
+        function addMessage(){const text=messageInput.value.trim();if(!state.connected)return;if(state.selectedImage){if(state.currentChatType==='private'){send({type:'privateImageMessage',chatId:state.currentPrivateChat,imageData:state.selectedImage.data,fileName:state.selectedImage.name,targetUsername:state.privateChats[state.currentPrivateChat]})}else{send({type:'imageMessage',channel:state.currentChannel,imageData:state.selectedImage.data,fileName:state.selectedImage.name})}state.selectedImage=null;imagePreviewContainer.innerHTML='';fileInput.value=''}else if(text){if(state.currentChatType==='private'){send({type:'privateMessage',chatId:state.currentPrivateChat,text,targetUsername:state.privateChats[state.currentPrivateChat]})}else{send({type:'message',channel:state.currentChannel,text})}}messageInput.value='';stopTyping()}
+        
         function addMessageToChannel(m){if(!state.messages[m.channel])state.messages[m.channel]=[];state.messages[m.channel].push(m);if(m.channel===state.currentChannel&&state.currentChatType==='channel')renderMessages()}
+        
         function addPrivateMessage(m){if(!state.privateMessages[m.chatId])state.privateMessages[m.chatId]=[];state.privateMessages[m.chatId].push(m);if(m.chatId===state.currentPrivateChat&&state.currentChatType==='private')renderMessages()}
+        
         function loadHistory(c,m){state.messages[c]=m;if(c===state.currentChannel&&state.currentChatType==='channel')renderMessages()}
+        
         function loadPrivateHistory(c,m){state.privateMessages[c]=m;if(c===state.currentPrivateChat&&state.currentChatType==='private')renderMessages()}
-        function renderMessages(){let msgs=state.currentChatType==='private'?state.privateMessages[state.currentPrivateChat]||[]:state.messages[state.currentChannel]||[];messageArea.innerHTML='';msgs.forEach(m=>{const d=document.createElement('div');d.className='message';d.innerHTML=`<div class="message-avatar">${m.author.charAt(0).toUpperCase()}</div><div class="message-content"><div class="message-header"><span class="message-author">${m.author}</span><span class="message-timestamp">${formatTime(new Date(m.timestamp))}</span></div><div class="message-text">${m.text}</div></div>`;messageArea.appendChild(d)});messageArea.scrollTop=messageArea.scrollHeight}
+        
+        function renderMessages(){let msgs=state.currentChatType==='private'?state.privateMessages[state.currentPrivateChat]||[]:state.messages[state.currentChannel]||[];messageArea.innerHTML='';msgs.forEach(m=>{const d=document.createElement('div');d.className='message';if(m.isImage){d.innerHTML=`<div class="message-avatar">${m.author.charAt(0).toUpperCase()}</div><div class="message-content"><div class="message-header"><span class="message-author">${m.author}</span><span class="message-timestamp">${formatTime(new Date(m.timestamp))}</span></div><img src="${m.imageData}" class="message-image" onclick="openImageModal('${m.imageData}')"></div>`}else{d.innerHTML=`<div class="message-avatar">${m.author.charAt(0).toUpperCase()}</div><div class="message-content"><div class="message-header"><span class="message-author">${m.author}</span><span class="message-timestamp">${formatTime(new Date(m.timestamp))}</span></div><div class="message-text">${m.text}</div></div>`}messageArea.appendChild(d)});messageArea.scrollTop=messageArea.scrollHeight}
+        
+        function openImageModal(src){modalImage.src=src;imageModal.classList.add('active')}
+        
+        function closeImageModal(){imageModal.classList.remove('active')}
+        
+        imageModal.onclick=e=>{if(e.target===imageModal)closeImageModal()};
+        
         function updateUserList(users){state.users=users;userList.innerHTML='';users.forEach(u=>{if(u===state.username)return;const el=document.createElement('div');el.className='user-list-item';el.innerHTML=`<span class="user-name">${u}</span><button class="dm-btn">DM</button>`;el.querySelector('.dm-btn').onclick=()=>requestPrivateChat(u);userList.appendChild(el)})}
+        
         function handleTypingIndicator(d){if(state.currentChatType==='private'){if(d.isPrivate&&d.username===state.privateChats[state.currentPrivateChat]){d.isTyping?state.typingUsers[d.username]=true:delete state.typingUsers[d.username];updateTypingIndicator()}}else{if(d.channel===state.currentChannel&&!d.isPrivate){d.isTyping?state.typingUsers[d.username]=true:delete state.typingUsers[d.username];updateTypingIndicator()}}}
+        
         function updateTypingIndicator(){const t=Object.keys(state.typingUsers);typingIndicator.textContent=t.length===0?'':t.length===1?`${t[0]} is typing...`:`${t.length} people are typing...`}
+        
         function startTyping(){if(!state.connected)return;if(state.currentChatType==='private')send({type:'typing',channel:state.currentPrivateChat,isTyping:true,isPrivate:true,targetUsername:state.privateChats[state.currentPrivateChat]});else send({type:'typing',channel:state.currentChannel,isTyping:true});clearTimeout(typingTimeout);typingTimeout=setTimeout(stopTyping,3000)}
+        
         function stopTyping(){if(!state.connected)return;if(state.currentChatType==='private')send({type:'typing',channel:state.currentPrivateChat,isTyping:false,isPrivate:true,targetUsername:state.privateChats[state.currentPrivateChat]});else send({type:'typing',channel:state.currentChannel,isTyping:false})}
+        
         function formatTime(d){return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0')}
+        
         function switchChannel(c){state.currentChatType='channel';state.currentPrivateChat=null;state.currentChannel=c;currentChannelEl.textContent=c;currentChannelEl.classList.remove('private');messageInput.placeholder=`Message #${c}`;document.querySelectorAll('.channel').forEach(ch=>{ch.classList.remove('active');if(ch.dataset.channel===c)ch.classList.add('active')});if(!state.messages[c])send({type:'getHistory',channel:c});else renderMessages();state.typingUsers={};updateTypingIndicator()}
+        
         sendBtn.onclick=e=>{e.preventDefault();addMessage()};
         messageInput.onkeypress=e=>{if(e.key==='Enter'){e.preventDefault();addMessage()}};
         messageInput.oninput=()=>{messageInput.value.length>0?startTyping():stopTyping()};
