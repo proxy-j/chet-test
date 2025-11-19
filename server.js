@@ -16,7 +16,8 @@ app.use(express.static('public'));
 const channels = {
     general: [],
     random: [],
-    gaming: []
+    gaming: [],
+    memes: []
 };
 
 const users = new Map();
