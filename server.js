@@ -1,306 +1,239 @@
-const express = require('express');
-const http = require('http');
 const WebSocket = require('ws');
-const crypto = require('crypto');
+const http = require('http');
 
-const app = express();
-const server = http.createServer(app);
+const server = http.createServer();
 const wss = new WebSocket.Server({ server });
 
-app.use(express.json());
-app.use(express.static('public'));
-
-const channels = { general: [], random: [], gaming: [] };
 const users = new Map();
-const privateChats = new Map();
-const userSocketMap = new Map();
+const messages = {
+  general: [],
+  gaming: [],
+  memes: []
+};
+const dms = new Map();
+const timeouts = new Map();
+const mutes = new Map();
+const bans = new Set();
 
-const MESSAGE_LIMIT = 2000;
-const USERNAME_LIMIT = 30;
+wss.on('connection', (ws, req) => {
+  const ip = req.socket.remoteAddress;
+  let username = null;
+  let role = 'user';
 
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
-}
-
-function generateUUID() {
-  return crypto.randomUUID();
-}
-
-function broadcast(message, excludeWs = null) {
-  const data = JSON.stringify(message);
-  wss.clients.forEach(client => {
-    if (client !== excludeWs && client.readyState === WebSocket.OPEN) {
-      client.send(data);
-    }
-  });
-}
-
-function sendToUser(username, message) {
-  const ws = userSocketMap.get(username);
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(message));
-  }
-}
-
-function broadcastUserList() {
-  const userList = Array.from(users.values()).map(u => ({ username: u.username }));
-  broadcast({ type: 'userList', users: userList });
-}
-
-wss.on('connection', (ws) => {
-  ws.on('message', data => {
+  ws.on('message', (data) => {
     try {
-      handleMessage(ws, JSON.parse(data.toString()));
-    } catch (e) {
-      console.error('Message error:', e);
+      const message = JSON.parse(data);
+
+      switch (message.type) {
+        case 'join':
+          if (bans.has(ip)) {
+            ws.send(JSON.stringify({ type: 'error', message: 'You are banned' }));
+            ws.close();
+            return;
+          }
+
+          username = message.username;
+          role = message.role || 'user';
+          
+          users.set(ws, { username, role, ip });
+          
+          // Send current users list to all clients
+          broadcastUsers();
+          
+          // Send message history
+          Object.keys(messages).forEach(channel => {
+            messages[channel].forEach(msg => {
+              ws.send(JSON.stringify(msg));
+            });
+          });
+          break;
+
+        case 'message':
+          if (!username) return;
+          
+          // Check if user is timed out
+          if (timeouts.has(username)) {
+            const timeoutEnd = timeouts.get(username);
+            if (Date.now() < timeoutEnd) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                message: 'You are timed out'
+              }));
+              return;
+            } else {
+              timeouts.delete(username);
+            }
+          }
+
+          // Check if user is muted
+          if (mutes.has(username)) {
+            const muteEnd = mutes.get(username);
+            if (Date.now() < muteEnd) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                message: 'You are muted'
+              }));
+              return;
+            } else {
+              mutes.delete(username);
+            }
+          }
+
+          const msgData = {
+            type: 'message',
+            username,
+            message: message.message,
+            timestamp: Date.now(),
+            channel: message.channel,
+            from: username,
+            to: message.to
+          };
+
+          if (message.channel) {
+            // Channel message
+            if (!messages[message.channel]) {
+              messages[message.channel] = [];
+            }
+            messages[message.channel].push(msgData);
+            
+            // Broadcast to all users
+            wss.clients.forEach(client => {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify(msgData));
+              }
+            });
+          } else if (message.to) {
+            // Direct message
+            const dmKey = [username, message.to].sort().join('-');
+            if (!dms.has(dmKey)) {
+              dms.set(dmKey, []);
+            }
+            dms.get(dmKey).push(msgData);
+
+            // Send to recipient
+            wss.clients.forEach(client => {
+              const user = users.get(client);
+              if (user && (user.username === message.to || user.username === username)) {
+                if (client.readyState === WebSocket.OPEN) {
+                  client.send(JSON.stringify(msgData));
+                }
+              }
+            });
+          }
+          break;
+
+        case 'timeout':
+          if (role !== 'admin' && role !== 'owner') return;
+          
+          const timeoutDuration = message.duration * 1000;
+          timeouts.set(message.username, Date.now() + timeoutDuration);
+          
+          // Notify the timed out user
+          wss.clients.forEach(client => {
+            const user = users.get(client);
+            if (user && user.username === message.username) {
+              client.send(JSON.stringify({
+                type: 'timeout',
+                duration: message.duration
+              }));
+            }
+          });
+          break;
+
+        case 'mute':
+          if (role !== 'admin' && role !== 'owner') return;
+          
+          const target = message.target;
+          const targetUser = Array.from(users.values()).find(u => u.username === target);
+          
+          if (targetUser && targetUser.role === 'owner') {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: 'Cannot mute the owner'
+            }));
+            return;
+          }
+          
+          const muteDuration = message.duration * 1000;
+          const muteEnd = Date.now() + muteDuration;
+          mutes.set(target, muteEnd);
+          
+          // Notify all users
+          wss.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({
+                type: 'mute',
+                username: target,
+                until: muteEnd
+              }));
+            }
+          });
+          break;
+
+        case 'ban':
+          if (role !== 'admin' && role !== 'owner') return;
+          
+          const banTarget = message.target;
+          const banTargetUser = Array.from(users.values()).find(u => u.username === banTarget);
+          
+          if (banTargetUser && banTargetUser.role === 'owner') {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: 'Cannot ban the owner'
+            }));
+            return;
+          }
+          
+          if (banTargetUser) {
+            bans.add(banTargetUser.ip);
+            
+            // Disconnect the banned user
+            wss.clients.forEach(client => {
+              const user = users.get(client);
+              if (user && user.username === banTarget) {
+                client.send(JSON.stringify({
+                  type: 'banned',
+                  message: 'You have been banned'
+                }));
+                client.close();
+              }
+            });
+          }
+          break;
+
+        case 'join-voice':
+          // WebRTC signaling would go here
+          // This is a simplified version
+          break;
+      }
+    } catch (err) {
+      console.error('Error processing message:', err);
     }
   });
 
   ws.on('close', () => {
-    const user = users.get(ws);
-    if (user) {
-      userSocketMap.delete(user.username);
-      users.delete(ws);
-      broadcastUserList();
-    }
+    users.delete(ws);
+    broadcastUsers();
   });
 });
 
-function handleMessage(ws, msg) {
-  const handlers = {
-    join: handleJoin,
-    message: handleChatMessage,
-    getHistory: handleGetHistory,
-    typing: handleTyping,
-    privateChatRequest: handlePrivateChatRequest,
-    privateChatResponse: handlePrivateChatResponse,
-    privateMessage: handlePrivateMessage,
-    getPrivateHistory: handleGetPrivateHistory,
-    addReaction: handleAddReaction,
-    removeReaction: handleRemoveReaction
-  };
-
-  if (handlers[msg.type]) {
-    handlers[msg.type](ws, msg);
-  }
-}
-
-function handleJoin(ws, msg) {
-  let { username, uuid } = msg;
-  
-  if (!username) username = 'Guest' + Math.floor(Math.random() * 1000);
-  username = username.slice(0, USERNAME_LIMIT).trim();
-  
-  if (!uuid) uuid = generateUUID();
-
-  users.set(ws, { username, uuid, joinedAt: Date.now() });
-  userSocketMap.set(username, ws);
-
-  ws.send(JSON.stringify({
-    type: 'joined',
-    username,
-    uuid,
-    channels: Object.keys(channels)
+function broadcastUsers() {
+  const userList = Array.from(users.values()).map(u => ({
+    username: u.username,
+    role: u.role
   }));
 
-  broadcastUserList();
-}
-
-function handleChatMessage(ws, msg) {
-  const user = users.get(ws);
-  if (!user) return;
-
-  let { channel, text, replyTo } = msg;
-  
-  if (!channel || typeof text !== 'string' || !text.trim()) return;
-  if (text.length > MESSAGE_LIMIT) {
-    return ws.send(JSON.stringify({ type: 'error', message: 'Message too long' }));
-  }
-
-  const chatMsg = {
-    id: generateId(),
-    author: user.username,
-    text,
-    channel,
-    timestamp: new Date().toISOString(),
-    replyTo: replyTo || null,
-    reactions: {}
-  };
-
-  if (channels[channel]) {
-    channels[channel].push(chatMsg);
-    if (channels[channel].length > 200) channels[channel].shift();
-  }
-
-  broadcast({ type: 'message', message: chatMsg });
-}
-
-function handleGetHistory(ws, msg) {
-  ws.send(JSON.stringify({
-    type: 'history',
-    channel: msg.channel,
-    messages: channels[msg.channel] || []
-  }));
-}
-
-function handleTyping(ws, msg) {
-  const user = users.get(ws);
-  if (!user) return;
-
-  if (msg.isPrivate) {
-    sendToUser(msg.targetUsername, {
-      type: 'typing',
-      username: user.username,
-      isTyping: msg.isTyping,
-      isPrivate: true
-    });
-  } else {
-    broadcast({
-      type: 'typing',
-      username: user.username,
-      channel: msg.channel,
-      isTyping: msg.isTyping
-    }, ws);
-  }
-}
-
-function handlePrivateChatRequest(ws, msg) {
-  const sender = users.get(ws);
-  if (sender) {
-    sendToUser(msg.targetUsername, {
-      type: 'privateChatRequest',
-      from: sender.username
-    });
-  }
-}
-
-function handlePrivateChatResponse(ws, msg) {
-  const responder = users.get(ws);
-  if (!responder) return;
-
-  const reqWs = userSocketMap.get(msg.from);
-  if (!reqWs) return;
-
-  if (msg.accepted) {
-    const chatId = `dm_${[msg.from, responder.username].sort().join('_')}`;
-    if (!privateChats.has(chatId)) {
-      privateChats.set(chatId, []);
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify({
+        type: 'users',
+        users: userList
+      }));
     }
-
-    reqWs.send(JSON.stringify({
-      type: 'privateChatAccepted',
-      chatId,
-      with: responder.username
-    }));
-
-    ws.send(JSON.stringify({
-      type: 'privateChatAccepted',
-      chatId,
-      with: msg.from
-    }));
-  } else {
-    reqWs.send(JSON.stringify({
-      type: 'privateChatRejected',
-      by: responder.username
-    }));
-  }
-}
-
-function handlePrivateMessage(ws, msg) {
-  const sender = users.get(ws);
-  if (!sender) return;
-
-  const { chatId, text, targetUsername, replyTo } = msg;
-  
-  if (!chatId || !text?.trim()) return;
-  if (text.length > MESSAGE_LIMIT) {
-    return ws.send(JSON.stringify({ type: 'error', message: 'Message too long' }));
-  }
-
-  const pm = {
-    id: generateId(),
-    author: sender.username,
-    text,
-    chatId,
-    timestamp: new Date().toISOString(),
-    replyTo,
-    reactions: {}
-  };
-
-  if (!privateChats.has(chatId)) {
-    privateChats.set(chatId, []);
-  }
-
-  privateChats.get(chatId).push(pm);
-
-  ws.send(JSON.stringify({ type: 'privateMessage', message: pm }));
-  sendToUser(targetUsername, { type: 'privateMessage', message: pm });
-}
-
-function handleGetPrivateHistory(ws, msg) {
-  ws.send(JSON.stringify({
-    type: 'privateHistory',
-    chatId: msg.chatId,
-    messages: privateChats.get(msg.chatId) || []
-  }));
-}
-
-function handleAddReaction(ws, msg) {
-  const user = users.get(ws);
-  if (!user) return;
-
-  const { messageId, emoji, channel, isPrivate, chatId } = msg;
-  const msgList = isPrivate ? privateChats.get(chatId) : channels[channel];
-  const message = msgList?.find(m => m.id === messageId);
-
-  if (!message) return;
-
-  if (!message.reactions) message.reactions = {};
-  if (!message.reactions[emoji]) message.reactions[emoji] = [];
-
-  if (!message.reactions[emoji].includes(user.username)) {
-    message.reactions[emoji].push(user.username);
-    broadcast({
-      type: 'reactionUpdate',
-      messageId,
-      reactions: message.reactions,
-      channel,
-      isPrivate,
-      chatId
-    });
-  }
-}
-
-function handleRemoveReaction(ws, msg) {
-  const user = users.get(ws);
-  if (!user) return;
-
-  const { messageId, emoji, channel, isPrivate, chatId } = msg;
-  const msgList = isPrivate ? privateChats.get(chatId) : channels[channel];
-  const message = msgList?.find(m => m.id === messageId);
-
-  if (!message?.reactions?.[emoji]) return;
-
-  message.reactions[emoji] = message.reactions[emoji].filter(u => u !== user.username);
-  if (!message.reactions[emoji].length) delete message.reactions[emoji];
-
-  broadcast({
-    type: 'reactionUpdate',
-    messageId,
-    reactions: message.reactions,
-    channel,
-    isPrivate,
-    chatId
   });
 }
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', users: users.size });
-});
-
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-  console.log(`📡 WebSocket server ready`);
-  console.log(`🌐 Open http://localhost:${PORT} in your browser`);
+  console.log(`Discord Clone Server running on port ${PORT}`);
 });
