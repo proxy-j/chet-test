@@ -553,40 +553,39 @@ function escapeHtml(text) {
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
-  $('loginBtn').onclick = () => {
-    const user = $('usernameInput').value.trim();
-    const pass = $('passcodeInput').value.trim();
-    
-    if (!user) {
-      alert('Please enter a username');
-      return;
-    }
-    
-    username = user;
-    
-    if (pass === '10owna12') {
-      role = 'owner';
-      $('ownerBadge').classList.add('show');
-    } else if (pass === 'nimda-1818') {
-      role = 'admin';
-      $('adminBadge').classList.add('show');
-    } else {
-      role = 'user';
-    }
-    
-    $('myUsername').textContent = username;
-    $('myAvatar').childNodes[0].textContent = username.charAt(0).toUpperCase();
-    $('myAvatar').style.background = stringToColor(username);
-    
-    $('loginOverlay').style.display = 'none';
-    
-    // Request notification permission
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-    
-    connect();
-  };
+$('loginBtn').onclick = function() {
+  const user = $('usernameInput').value.trim();
+  const pass = $('passcodeInput').value.trim();
+  
+  if (!user) {
+    alert('Please enter a username');
+    return;
+  }
+  
+  username = user;
+  
+  if (pass === '10owna12') {
+    role = 'owner';
+    $('ownerBadge').classList.add('show');
+  } else if (pass === 'nimda-1818') {
+    role = 'admin';
+    $('adminBadge').classList.add('show');
+  } else {
+    role = 'user';
+  }
+  
+  $('myUsername').textContent = username;
+  $('myAvatar').childNodes[0].textContent = username.charAt(0).toUpperCase();
+  $('myAvatar').style.background = stringToColor(username);
+  
+  $('loginOverlay').style.display = 'none';
+  
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+  
+  connect();
+};
   
   $('usernameInput').onkeypress = function(e) {
     if (e.key === 'Enter') $('loginBtn').click();
