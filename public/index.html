@@ -3,12 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Discord Clone</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>💬</text></svg>">
+<title>Discord Clone - Debug</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;height:100vh;overflow:hidden;background:#36393f;color:#dcddde}
-.container{display:flex;height:100vh}
+.debug-panel{position:fixed;bottom:0;left:0;right:0;background:#1a1c20;color:#0f0;padding:12px;font-family:monospace;font-size:11px;max-height:150px;overflow-y:auto;border-top:2px solid #0f0;z-index:9999}
+.debug-panel .error{color:#f00}
+.debug-panel .success{color:#0f0}
+.debug-panel .warning{color:#ff0}
+.debug-panel .info{color:#0af}
+.container{display:flex;height:calc(100vh - 150px)}
 .sidebar{width:240px;background:#2f3136;display:flex;flex-direction:column}
 .sidebar.right{border-left:1px solid #202225}
 .server-header{height:48px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #202225;color:#fff;font-weight:600;font-size:15px}
@@ -20,106 +24,53 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;h
 .channel.active{background:#404249;color:#fff}
 .channel-name{display:flex;align-items:center}
 .channel-name::before{content:'#';margin-right:6px;font-weight:600;color:#72767d}
-.channel.voice .channel-name::before{content:'🔊';font-size:16px}
-.channel.dm .channel-name::before{content:'@';color:#5865f2}
-.unread-badge{background:#ed4245;color:#fff;border-radius:10px;padding:2px 6px;font-size:10px;font-weight:700;min-width:18px;text-align:center;display:none}
-.channel.has-unread .unread-badge{display:block}
-.close-dm{opacity:0;background:none;border:none;color:#96989d;cursor:pointer;font-size:16px;transition:opacity .2s}
-.channel:hover .close-dm{opacity:1}
-.close-dm:hover{color:#ed4245}
-.users-section{flex:1;overflow-y:auto;padding:8px}
-.users-section-header{padding:8px 12px;color:#96989d;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
-.role-header{font-size:11px;font-weight:600;text-transform:uppercase;padding:8px 12px 4px;color:#96989d}
-.user-item{padding:6px 12px;color:#dcddde;font-size:13px;display:flex;align-items:center;justify-content:space-between;border-radius:4px;margin:0 4px;transition:background .15s;cursor:pointer}
-.user-item:hover{background:#3a3c42}
-.user-info{display:flex;align-items:center;gap:8px}
-.user-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:12px}
-.user-status{width:8px;height:8px;border-radius:50%;background:#3ba55d;margin-left:4px}
-.role-badge{font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;color:#fff;margin-left:4px}
-.role-badge.owner{background:linear-gradient(135deg,#e74c3c,#c0392b)}
-.role-badge.admin{background:linear-gradient(135deg,#faa61a,#ff8c00)}
-.dm-btn{opacity:0;background:#5865f2;color:#fff;border:none;padding:3px 8px;border-radius:3px;font-size:10px;cursor:pointer;transition:opacity .2s}
-.user-item:hover .dm-btn{opacity:1}
-.user-area{height:52px;background:#292b2f;padding:0 8px;display:flex;align-items:center;cursor:pointer;transition:background .2s}
-.user-area:hover{background:#2a2d31}
-.my-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;margin-right:8px;font-size:14px;position:relative}
-.avatar-badge{position:absolute;bottom:-2px;right:-2px;width:14px;height:14px;border-radius:50%;display:none;align-items:center;justify-content:center;font-size:8px;border:2px solid #292b2f}
-.avatar-badge.show{display:flex}
-.avatar-badge.owner{background:#e74c3c}
-.avatar-badge.admin{background:#faa61a}
-.conn-status{width:8px;height:8px;border-radius:50%;background:#ed4245;margin-left:auto;transition:background .3s}
+.user-area{height:52px;background:#292b2f;padding:0 8px;display:flex;align-items:center}
+.my-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;margin-right:8px;font-size:14px;background:#5865f2}
+.conn-status{width:12px;height:12px;border-radius:50%;background:#ed4245;margin-left:auto;transition:background .3s}
 .conn-status.online{background:#3ba55d}
 .main-content{flex:1;display:flex;flex-direction:column;background:#36393f}
-.chat-header{height:48px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #202225;color:#fff}
-.current-channel{font-weight:600;font-size:16px;display:flex;align-items:center}
-.current-channel::before{content:'#';margin-right:4px;color:#72767d}
-.current-channel.dm::before{content:'@';color:#5865f2}
-.current-channel.voice::before{content:'🔊'}
-.voice-controls{display:flex;gap:8px;align-items:center}
-.voice-btn{background:#3ba55d;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:500;font-size:13px;transition:background .2s}
-.voice-btn:hover{background:#2d8659}
-.voice-btn.active{background:#ed4245}
-.voice-btn.muted{background:#72767d}
+.chat-header{height:48px;padding:0 16px;display:flex;align-items:center;border-bottom:1px solid #202225;color:#fff;font-weight:600;font-size:16px}
 .messages{flex:1;overflow-y:auto;padding:16px}
-.message{display:flex;padding:4px 0;margin-bottom:8px;transition:background .15s}
-.message:hover{background:rgba(0,0,0,.1);margin-left:-16px;margin-right:-16px;padding-left:16px;padding-right:16px;border-radius:4px}
+.message{display:flex;padding:8px;margin-bottom:8px;background:rgba(0,0,0,.1);border-radius:4px}
 .msg-avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;margin-right:16px;flex-shrink:0}
-.msg-content{flex:1;min-width:0}
-.msg-header{display:flex;align-items:center;gap:6px;margin-bottom:2px}
-.msg-author{font-weight:500;font-size:15px}
-.msg-author.owner{color:#e74c3c}
-.msg-author.admin{color:#faa61a}
-.msg-time{color:#72767d;font-size:12px}
-.msg-text{color:#dcddde;font-size:15px;line-height:1.4;word-wrap:break-word}
-.input-area{padding:0 16px 16px}
+.msg-content{flex:1}
+.msg-author{font-weight:500;font-size:15px;margin-bottom:4px}
+.msg-text{color:#dcddde;font-size:15px;line-height:1.4}
+.input-area{padding:16px}
 .input-wrapper{background:#40444b;border-radius:8px;padding:12px;display:flex;align-items:center}
 .msg-input{flex:1;background:none;border:none;color:#dcddde;font-size:15px;outline:none}
-.msg-input::placeholder{color:#72767d}
-.send-btn{background:#5865f2;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:500;margin-left:8px;transition:background .2s}
-.send-btn:hover{background:#4752c4}
-.send-btn:disabled{background:#4e5058;cursor:not-allowed;opacity:.5}
-#loginOverlay{position:fixed;inset:0;z-index:2000;background:linear-gradient(135deg,#1a1c20 0%,#2f3136 50%,#1a1c20 100%);display:flex;align-items:center;justify-content:center;flex-direction:column}
-#loginCard{width:400px;background:#2f3136;border:1px solid #202225;border-radius:8px;padding:32px;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.send-btn{background:#5865f2;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:500;margin-left:8px}
+.send-btn:disabled{background:#4e5058;opacity:.5}
+#loginOverlay{position:fixed;inset:0;z-index:2000;background:linear-gradient(135deg,#1a1c20,#2f3136);display:flex;align-items:center;justify-content:center}
+#loginCard{width:400px;background:#2f3136;border:1px solid #202225;border-radius:8px;padding:32px;color:#fff}
 #loginCard h1{margin-bottom:8px;font-size:24px;text-align:center}
 #loginCard p{text-align:center;color:#96989d;margin-bottom:24px;font-size:14px}
 .input-group{margin-bottom:16px}
 .input-label{display:block;font-size:12px;font-weight:600;color:#96989d;margin-bottom:8px;text-transform:uppercase}
-.login-input{width:100%;padding:10px;border-radius:4px;border:1px solid #202225;background:#202225;color:#fff;font-size:14px;transition:border-color .2s}
-.login-input:focus{outline:none;border-color:#5865f2}
-.login-btn{width:100%;margin-top:8px;padding:12px;border:none;border-radius:4px;background:#5865f2;color:#fff;cursor:pointer;font-weight:600;font-size:14px;transition:background .2s}
-.login-btn:hover{background:#4752c4}
+.login-input{width:100%;padding:10px;border-radius:4px;border:1px solid #202225;background:#202225;color:#fff;font-size:14px}
+.login-btn{width:100%;margin-top:8px;padding:12px;border:none;border-radius:4px;background:#5865f2;color:#fff;cursor:pointer;font-weight:600;font-size:14px}
 .role-info{margin-top:16px;padding:12px;background:#202225;border-radius:4px;font-size:12px;color:#96989d}
-.role-info strong{color:#fff;display:block;margin-bottom:4px}
-::-webkit-scrollbar{width:8px}
-::-webkit-scrollbar-track{background:#2f3136}
-::-webkit-scrollbar-thumb{background:#202225;border-radius:4px}
-::-webkit-scrollbar-thumb:hover{background:#1a1c1f}
-.notif{position:fixed;top:16px;right:16px;z-index:1000;background:#2f3136;border:1px solid #202225;border-radius:8px;padding:16px;box-shadow:0 4px 12px rgba(0,0,0,.4);animation:slideIn .3s;min-width:300px}
-@keyframes slideIn{from{transform:translateX(400px);opacity:0}to{transform:translateX(0);opacity:1}}
-.notif-title{color:#fff;font-weight:600;font-size:14px;margin-bottom:8px}
-.notif-body{color:#dcddde;font-size:13px}
-.empty{text-align:center;color:#72767d;padding:12px;font-size:12px}
+.users-section{flex:1;overflow-y:auto;padding:8px}
+.user-item{padding:8px 12px;color:#dcddde;font-size:13px;border-radius:4px;margin:4px}
 </style>
 </head>
 <body>
 <div id="loginOverlay">
 <div id="loginCard">
-<h1>Welcome to Discord Clone</h1>
-<p>Enter your credentials to join the server</p>
+<h1>🔍 Discord Clone - Debug Mode</h1>
+<p>Watch the console at the bottom for diagnostic info</p>
 <div class="input-group">
 <label class="input-label">Username</label>
-<input type="text" class="login-input" id="usernameInput" placeholder="Enter your username">
+<input type="text" class="login-input" id="usernameInput" placeholder="Enter your username" value="TestUser">
 </div>
 <div class="input-group">
 <label class="input-label">Role Passcode (Optional)</label>
-<input type="password" class="login-input" id="passcodeInput" placeholder="Leave blank for member access">
+<input type="password" class="login-input" id="passcodeInput" placeholder="Leave blank for member">
 </div>
 <button class="login-btn" id="loginBtn">Join Server</button>
 <div class="role-info">
-<strong>Role Access:</strong>
-Admin: nimda-1818<br>
-Owner: 10owna12<br>
-Leave blank for Member
+<strong>Debug Info:</strong><br>
+This version shows connection status and errors
 </div>
 </div>
 </div>
@@ -130,44 +81,16 @@ Leave blank for Member
 <div class="channels">
 <div class="channel-section">
 <div class="section-header">Text Channels</div>
-<div class="channel active" data-channel="general" data-type="text">
-<span class="channel-name">general</span>
-<span class="unread-badge">0</span>
-</div>
-<div class="channel" data-channel="gaming" data-type="text">
-<span class="channel-name">gaming</span>
-<span class="unread-badge">0</span>
-</div>
-<div class="channel" data-channel="memes" data-type="text">
-<span class="channel-name">memes</span>
-<span class="unread-badge">0</span>
-</div>
-</div>
-<div class="channel-section">
-<div class="section-header">Voice Channels</div>
-<div class="channel voice" data-channel="general" data-type="voice">
+<div class="channel active" data-channel="general">
 <span class="channel-name">general</span>
 </div>
-<div class="channel voice" data-channel="gaming" data-type="voice">
-<span class="channel-name">gaming</span>
-</div>
-<div class="channel voice" data-channel="chill" data-type="voice">
-<span class="channel-name">chill</span>
-</div>
-</div>
-<div class="channel-section">
-<div class="section-header">Direct Messages</div>
-<div id="dmList"></div>
 </div>
 </div>
 <div class="user-area">
-<div class="my-avatar" id="myAvatar">U
-<div class="avatar-badge owner" id="ownerBadge">👑</div>
-<div class="avatar-badge admin" id="adminBadge">⚡</div>
-</div>
+<div class="my-avatar" id="myAvatar">U</div>
 <div style="flex:1">
 <div style="font-size:14px;font-weight:500;color:#fff" id="myUsername">User</div>
-<div style="font-size:12px;color:#3ba55d">Online</div>
+<div style="font-size:12px;color:#72767d" id="statusText">Offline</div>
 </div>
 <div class="conn-status" id="connStatus"></div>
 </div>
@@ -175,11 +98,7 @@ Leave blank for Member
 
 <div class="main-content">
 <div class="chat-header">
-<div class="current-channel" id="currentChannel">general</div>
-<div class="voice-controls" id="voiceControls" style="display:none">
-<button class="voice-btn" id="leaveVoiceBtn">Leave Voice</button>
-<button class="voice-btn muted" id="muteBtn">Mute</button>
-</div>
+<div id="currentChannel">#general</div>
 </div>
 <div class="messages" id="messagesArea"></div>
 <div class="input-area">
@@ -191,358 +110,146 @@ Leave blank for Member
 </div>
 
 <div class="sidebar right">
-<div class="server-header">
-<span>Members</span>
-<span class="users-section-header" style="color:#3ba55d" id="onlineCount">0 online</span>
-</div>
-<div class="users-section" id="usersList"></div>
+<div class="server-header">Members</div>
+<div class="users-section" id="usersList">
+<div style="padding:12px;color:#72767d;text-align:center">Waiting for connection...</div>
 </div>
 </div>
+</div>
+
+<div class="debug-panel" id="debugPanel"></div>
 
 <script>
-let ws, connected = false;
-let username = '', role = 'user', uuid = null;
-let currentChannel = 'general', currentType = 'text';
-let currentDM = null, dmPartners = {};
-let messages = {}, dmMessages = {}, unreadCount = {};
-let users = [];
-let voiceChannel = null, localStream = null, isMuted = false;
-let messageRateLimit = {};
-
 const $ = id => document.getElementById(id);
+let ws, username = '', role = 'user';
+
+function log(msg, type = 'info') {
+  const panel = $('debugPanel');
+  const time = new Date().toLocaleTimeString();
+  const entry = document.createElement('div');
+  entry.className = type;
+  entry.textContent = `[${time}] ${msg}`;
+  panel.appendChild(entry);
+  panel.scrollTop = panel.scrollHeight;
+  console.log(`[${type.toUpperCase()}]`, msg);
+}
 
 function connect() {
-  ws = new WebSocket('ws://localhost:3001');
+  log('🔌 Attempting to connect to ws://localhost:3001...', 'info');
   
-  ws.onopen = function() {
-    connected = true;
-    $('connStatus').classList.add('online');
-    $('sendBtn').disabled = false;
-    ws.send(JSON.stringify({
-      type: 'join',
-      username: username,
-      role: role,
-      uuid: uuid
-    }));
-  };
+  try {
+    ws = new WebSocket('ws://localhost:3001');
+    
+    ws.onopen = function() {
+      log('✅ WebSocket connection opened!', 'success');
+      $('connStatus').classList.add('online');
+      $('statusText').textContent = 'Online';
+      $('statusText').style.color = '#3ba55d';
+      $('sendBtn').disabled = false;
+      
+      const joinMsg = {
+        type: 'join',
+        username: username,
+        role: role
+      };
+      log('📤 Sending join message: ' + JSON.stringify(joinMsg), 'info');
+      ws.send(JSON.stringify(joinMsg));
+    };
 
-  ws.onclose = function() {
-    connected = false;
-    $('connStatus').classList.remove('online');
-    $('sendBtn').disabled = true;
-    setTimeout(connect, 3000);
-  };
+    ws.onerror = function(error) {
+      log('❌ WebSocket ERROR: ' + error, 'error');
+      log('⚠️ Make sure the server is running on port 3001!', 'warning');
+    };
 
-  ws.onmessage = function(e) {
-    try {
-      handleMessage(JSON.parse(e.data));
-    } catch (err) {
-      console.error('Error handling message:', err);
-    }
-  };
+    ws.onclose = function(event) {
+      log('🔌 WebSocket closed. Code: ' + event.code + ', Reason: ' + event.reason, 'warning');
+      $('connStatus').classList.remove('online');
+      $('statusText').textContent = 'Disconnected';
+      $('statusText').style.color = '#ed4245';
+      $('sendBtn').disabled = true;
+      log('🔄 Reconnecting in 3 seconds...', 'info');
+      setTimeout(connect, 3000);
+    };
+
+    ws.onmessage = function(e) {
+      log('📥 Received message: ' + e.data.substring(0, 100) + '...', 'info');
+      try {
+        const data = JSON.parse(e.data);
+        handleMessage(data);
+      } catch (err) {
+        log('❌ Error parsing message: ' + err.message, 'error');
+      }
+    };
+  } catch (err) {
+    log('❌ Failed to create WebSocket: ' + err.message, 'error');
+  }
 }
 
 function handleMessage(data) {
+  log('📨 Handling message type: ' + data.type, 'info');
+  
   switch(data.type) {
     case 'users':
-      users = data.users;
-      renderUsers();
+      log('👥 Received users list: ' + data.users.length + ' users', 'success');
+      renderUsers(data.users);
       break;
     case 'message':
-      handleIncomingMessage(data);
-      break;
-    case 'privateMessage':
-      handlePrivateMessage(data);
-      break;
-    case 'timeout':
-      showNotification('⏰ Timeout', 'You have been timed out for ' + data.duration + ' seconds');
-      $('messageInput').disabled = true;
-      $('sendBtn').disabled = true;
-      setTimeout(function() {
-        $('messageInput').disabled = false;
-        $('sendBtn').disabled = false;
-      }, data.duration * 1000);
-      break;
-    case 'mute':
-      showNotification('🔇 Muted', data.username + ' has been muted');
-      break;
-    case 'banned':
-      alert('You have been banned from the server');
-      window.location.reload();
-      break;
-    case 'kicked':
-      alert('You have been kicked from the server');
-      window.location.reload();
+      log('💬 Received channel message from ' + data.username, 'success');
+      displayMessage(data);
       break;
     case 'error':
-      showNotification('❌ Error', data.message);
+      log('❌ Server error: ' + data.message, 'error');
       break;
+    default:
+      log('⚠️ Unknown message type: ' + data.type, 'warning');
   }
 }
 
-function handleIncomingMessage(data) {
-  const channel = data.channel;
-  if (!messages[channel]) messages[channel] = [];
-  messages[channel].push(data.message);
-  
-  if (currentType === 'text' && currentChannel === channel) {
-    renderMessages();
-  } else {
-    unreadCount[channel] = (unreadCount[channel] || 0) + 1;
-    updateUnreadBadge(channel);
-    if (!document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-      new Notification('#' + channel, {
-        body: data.message.username + ': ' + data.message.message.substring(0, 50),
-        icon: '/favicon.ico'
-      });
-    }
-  }
+function renderUsers(users) {
+  const html = users.map(u => 
+    `<div class="user-item">
+      <div style="display:flex;align-items:center">
+        <div class="msg-avatar" style="width:24px;height:24px;font-size:11px;margin-right:8px;background:#5865f2">
+          ${u.username.charAt(0).toUpperCase()}
+        </div>
+        ${u.username} ${u.role !== 'user' ? '(' + u.role + ')' : ''}
+      </div>
+    </div>`
+  ).join('');
+  $('usersList').innerHTML = html || '<div style="padding:12px;color:#72767d;text-align:center">No users</div>';
 }
 
-function handlePrivateMessage(data) {
-  const chatId = data.chatId;
-  if (!dmMessages[chatId]) dmMessages[chatId] = [];
-  dmMessages[chatId].push(data.message);
-  
-  if (currentType === 'dm' && currentDM === chatId) {
-    renderMessages();
-  } else {
-    unreadCount['dm-' + chatId] = (unreadCount['dm-' + chatId] || 0) + 1;
-    updateDMUnread(chatId);
-    if (!document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-      new Notification('@' + dmPartners[chatId], {
-        body: data.message.username + ': ' + data.message.message.substring(0, 50),
-        icon: '/favicon.ico'
-      });
-    }
-  }
-}
-
-function renderUsers() {
-  const owners = users.filter(u => u.role === 'owner' && u.username !== username);
-  const admins = users.filter(u => u.role === 'admin' && u.username !== username);
-  const members = users.filter(u => u.role === 'user' && u.username !== username);
-  
-  let html = '';
-  
-  if (owners.length > 0) {
-    html += '<div class="role-header" style="color:#e74c3c">👑 Owners</div>';
-    owners.forEach(u => html += renderUser(u));
-  }
-  
-  if (admins.length > 0) {
-    html += '<div class="role-header" style="color:#faa61a">⚡ Admins</div>';
-    admins.forEach(u => html += renderUser(u));
-  }
-  
-  if (members.length > 0) {
-    html += '<div class="role-header">Members</div>';
-    members.forEach(u => html += renderUser(u));
-  }
-  
-  $('usersList').innerHTML = html || '<div class="empty">No users online</div>';
-  $('onlineCount').textContent = (users.length - 1) + ' online';
-}
-
-function renderUser(user) {
-  const color = stringToColor(user.username);
-  const initial = user.username.charAt(0).toUpperCase();
-  const roleBadge = user.role === 'owner' ? '<span class="role-badge owner">OWNER</span>' :
-                    user.role === 'admin' ? '<span class="role-badge admin">ADMIN</span>' : '';
-  
-  return '<div class="user-item" onclick="openDM(\'' + user.username + '\')"><div class="user-info"><div class="user-avatar" style="background:' + color + '">' + initial + '</div><span>' + user.username + roleBadge + '</span><div class="user-status"></div></div><button class="dm-btn" onclick="event.stopPropagation();openDM(\'' + user.username + '\')">DM</button></div>';
-}
-
-function renderMessages() {
-  const msgs = currentType === 'dm' ? (dmMessages[currentDM] || []) : (messages[currentChannel] || []);
-  
-  $('messagesArea').innerHTML = msgs.map(function(msg) {
-    const color = stringToColor(msg.username);
-    const initial = msg.username.charAt(0).toUpperCase();
-    const time = new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-    const authorClass = msg.role === 'owner' ? 'owner' : msg.role === 'admin' ? 'admin' : '';
-    const roleBadge = msg.role === 'owner' ? '<span class="role-badge owner">OWNER</span>' :
-                      msg.role === 'admin' ? '<span class="role-badge admin">ADMIN</span>' : '';
-    
-    return '<div class="message"><div class="msg-avatar" style="background:' + color + '">' + initial + '</div><div class="msg-content"><div class="msg-header"><span class="msg-author ' + authorClass + '">' + msg.username + '</span>' + roleBadge + '<span class="msg-time">' + time + '</span></div><div class="msg-text">' + escapeHtml(msg.message) + '</div></div></div>';
-  }).join('');
-  
+function displayMessage(msg) {
+  const msgEl = document.createElement('div');
+  msgEl.className = 'message';
+  msgEl.innerHTML = `
+    <div class="msg-avatar" style="background:#5865f2">
+      ${msg.username.charAt(0).toUpperCase()}
+    </div>
+    <div class="msg-content">
+      <div class="msg-author">${msg.username}</div>
+      <div class="msg-text">${escapeHtml(msg.message)}</div>
+    </div>
+  `;
+  $('messagesArea').appendChild(msgEl);
   $('messagesArea').scrollTop = $('messagesArea').scrollHeight;
 }
 
 function sendMessage() {
   const text = $('messageInput').value.trim();
-  if (!text || !connected) return;
-  
-  // Rate limiting check
-  const now = Date.now();
-  if (!messageRateLimit[username]) messageRateLimit[username] = [];
-  messageRateLimit[username] = messageRateLimit[username].filter(time => now - time < 5000);
-  
-  if (role === 'user' && messageRateLimit[username].length >= 5) {
-    showNotification('⚠️ Slow down!', 'You are sending messages too fast. Timeout for 30 seconds.');
-    $('messageInput').disabled = true;
-    $('sendBtn').disabled = true;
-    setTimeout(() => {
-      $('messageInput').disabled = false;
-      $('sendBtn').disabled = false;
-    }, 30000);
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN) {
+    log('⚠️ Cannot send message - not connected', 'warning');
     return;
   }
   
-  messageRateLimit[username].push(now);
-  
-  if (currentType === 'dm') {
-    ws.send(JSON.stringify({
-      type: 'privateMessage',
-      chatId: currentDM,
-      message: text,
-      to: dmPartners[currentDM]
-    }));
-  } else {
-    ws.send(JSON.stringify({
-      type: 'message',
-      channel: currentChannel,
-      message: text
-    }));
-  }
-  
+  const msg = {
+    type: 'message',
+    channel: 'general',
+    message: text
+  };
+  log('📤 Sending message: ' + text, 'info');
+  ws.send(JSON.stringify(msg));
   $('messageInput').value = '';
-}
-
-function switchChannel(channel, type) {
-  document.querySelectorAll('.channel').forEach(function(c) { c.classList.remove('active'); });
-  const elem = document.querySelector('[data-channel="' + channel + '"][data-type="' + type + '"]');
-  if (elem) elem.classList.add('active');
-  
-  currentChannel = channel;
-  currentType = type;
-  currentDM = null;
-  
-  if (type === 'voice') {
-    joinVoiceChannel(channel);
-  } else {
-    if (voiceChannel) leaveVoiceChannel();
-    $('currentChannel').textContent = channel;
-    $('currentChannel').className = 'current-channel';
-    $('voiceControls').style.display = 'none';
-    $('messageInput').placeholder = 'Message #' + channel;
-    renderMessages();
-    unreadCount[channel] = 0;
-    updateUnreadBadge(channel);
-  }
-}
-
-async function joinVoiceChannel(channel) {
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    voiceChannel = channel;
-    $('currentChannel').textContent = channel;
-    $('currentChannel').className = 'current-channel voice';
-    $('voiceControls').style.display = 'flex';
-    $('messagesArea').innerHTML = '<div class="empty">🔊 Connected to voice channel</div>';
-    showNotification('🔊 Voice', 'Connected to ' + channel);
-  } catch (err) {
-    showNotification('❌ Error', 'Could not access microphone');
-  }
-}
-
-function leaveVoiceChannel() {
-  if (localStream) {
-    localStream.getTracks().forEach(function(track) { track.stop(); });
-    localStream = null;
-  }
-  voiceChannel = null;
-  $('voiceControls').style.display = 'none';
-  switchChannel('general', 'text');
-}
-
-function toggleMute() {
-  if (!localStream) return;
-  isMuted = !isMuted;
-  localStream.getAudioTracks().forEach(function(track) {
-    track.enabled = !isMuted;
-  });
-  $('muteBtn').textContent = isMuted ? 'Unmute' : 'Mute';
-  $('muteBtn').classList.toggle('muted', isMuted);
-}
-
-function openDM(targetUsername) {
-  const chatId = [username, targetUsername].sort().join('-');
-  dmPartners[chatId] = targetUsername;
-  
-  if (!document.querySelector('[data-dm="' + chatId + '"]')) {
-    const dmEl = document.createElement('div');
-    dmEl.className = 'channel dm';
-    dmEl.dataset.dm = chatId;
-    dmEl.innerHTML = '<span class="channel-name">' + targetUsername + '</span><span class="unread-badge">0</span><button class="close-dm" onclick="event.stopPropagation();closeDM(\'' + chatId + '\')">×</button>';
-    dmEl.onclick = function() { switchToDM(chatId, targetUsername); };
-    $('dmList').appendChild(dmEl);
-  }
-  
-  switchToDM(chatId, targetUsername);
-}
-
-function switchToDM(chatId, targetUsername) {
-  document.querySelectorAll('.channel').forEach(function(c) { c.classList.remove('active'); });
-  const dmElem = document.querySelector('[data-dm="' + chatId + '"]');
-  if (dmElem) dmElem.classList.add('active');
-  
-  currentDM = chatId;
-  currentType = 'dm';
-  dmPartners[chatId] = targetUsername;
-  
-  if (voiceChannel) leaveVoiceChannel();
-  
-  $('currentChannel').textContent = targetUsername;
-  $('currentChannel').className = 'current-channel dm';
-  $('messageInput').placeholder = 'Message @' + targetUsername;
-  renderMessages();
-  unreadCount['dm-' + chatId] = 0;
-  updateDMUnread(chatId);
-}
-
-function closeDM(chatId) {
-  const dmElem = document.querySelector('[data-dm="' + chatId + '"]');
-  if (dmElem) dmElem.remove();
-  delete dmPartners[chatId];
-  delete dmMessages[chatId];
-  if (currentDM === chatId) switchChannel('general', 'text');
-}
-
-function updateUnreadBadge(channel) {
-  const elem = document.querySelector('[data-channel="' + channel + '"][data-type="text"] .unread-badge');
-  if (elem) {
-    const count = unreadCount[channel] || 0;
-    elem.textContent = count;
-    elem.parentElement.classList.toggle('has-unread', count > 0);
-  }
-}
-
-function updateDMUnread(chatId) {
-  const elem = document.querySelector('[data-dm="' + chatId + '"] .unread-badge');
-  if (elem) {
-    const count = unreadCount['dm-' + chatId] || 0;
-    elem.textContent = count;
-    elem.parentElement.classList.toggle('has-unread', count > 0);
-  }
-}
-
-function showNotification(title, body) {
-  const notif = document.createElement('div');
-  notif.className = 'notif';
-  notif.innerHTML = '<div class="notif-title">' + title + '</div><div class="notif-body">' + body + '</div>';
-  document.body.appendChild(notif);
-  setTimeout(function() { notif.remove(); }, 4000);
-}
-
-function stringToColor(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const colors = ['#5865F2', '#57F287', '#FEE75C', '#EB459E', '#ED4245', '#3BA55D'];
-  return colors[Math.abs(hash) % colors.length];
 }
 
 function escapeHtml(text) {
@@ -553,59 +260,41 @@ function escapeHtml(text) {
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
-$('loginBtn').onclick = function() {
-  const user = $('usernameInput').value.trim();
-  const pass = $('passcodeInput').value.trim();
+  log('🚀 Page loaded! Ready to connect.', 'success');
   
-  if (!user) {
-    alert('Please enter a username');
-    return;
-  }
-  
-  username = user;
-  
-  if (pass === '10owna12') {
-    role = 'owner';
-    $('ownerBadge').classList.add('show');
-  } else if (pass === 'nimda-1818') {
-    role = 'admin';
-    $('adminBadge').classList.add('show');
-  } else {
-    role = 'user';
-  }
-  
-  $('myUsername').textContent = username;
-  $('myAvatar').childNodes[0].textContent = username.charAt(0).toUpperCase();
-  $('myAvatar').style.background = stringToColor(username);
-  
-  $('loginOverlay').style.display = 'none';
-  
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
-  }
-  
-  connect();
-};
-  
-  $('usernameInput').onkeypress = function(e) {
-    if (e.key === 'Enter') $('loginBtn').click();
-  };
-  
-  $('passcodeInput').onkeypress = function(e) {
-    if (e.key === 'Enter') $('loginBtn').click();
+  $('loginBtn').onclick = function() {
+    username = $('usernameInput').value.trim();
+    const pass = $('passcodeInput').value.trim();
+    
+    if (!username) {
+      log('❌ Username is required!', 'error');
+      alert('Please enter a username');
+      return;
+    }
+    
+    if (pass === '10owna12') {
+      role = 'owner';
+      log('👑 Logging in as OWNER', 'success');
+    } else if (pass === 'nimda-1818') {
+      role = 'admin';
+      log('⚡ Logging in as ADMIN', 'success');
+    } else {
+      role = 'user';
+      log('👤 Logging in as USER', 'info');
+    }
+    
+    $('myUsername').textContent = username;
+    $('myAvatar').textContent = username.charAt(0).toUpperCase();
+    $('loginOverlay').style.display = 'none';
+    
+    log('✅ Login successful! Username: ' + username + ', Role: ' + role, 'success');
+    connect();
   };
   
   $('sendBtn').onclick = sendMessage;
   $('messageInput').onkeypress = function(e) {
     if (e.key === 'Enter') sendMessage();
   };
-  
-  $('leaveVoiceBtn').onclick = leaveVoiceChannel;
-  $('muteBtn').onclick = toggleMute;
-  
-  document.querySelectorAll('.channel[data-channel]').forEach(function(ch) {
-    ch.onclick = function() { switchChannel(ch.dataset.channel, ch.dataset.type); };
-  });
 });
 </script>
 </body>
