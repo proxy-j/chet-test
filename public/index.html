@@ -1,301 +1,415 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Discord Clone - Debug</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;height:100vh;overflow:hidden;background:#36393f;color:#dcddde}
-.debug-panel{position:fixed;bottom:0;left:0;right:0;background:#1a1c20;color:#0f0;padding:12px;font-family:monospace;font-size:11px;max-height:150px;overflow-y:auto;border-top:2px solid #0f0;z-index:9999}
-.debug-panel .error{color:#f00}
-.debug-panel .success{color:#0f0}
-.debug-panel .warning{color:#ff0}
-.debug-panel .info{color:#0af}
-.container{display:flex;height:calc(100vh - 150px)}
-.sidebar{width:240px;background:#2f3136;display:flex;flex-direction:column}
-.sidebar.right{border-left:1px solid #202225}
-.server-header{height:48px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #202225;color:#fff;font-weight:600;font-size:15px}
-.channels{flex:1;overflow-y:auto;padding:8px}
-.channel-section{margin-bottom:16px}
-.section-header{color:#96989d;font-size:12px;font-weight:600;text-transform:uppercase;margin-bottom:4px;padding:0 8px}
-.channel{padding:8px 12px;margin:2px 0;border-radius:4px;color:#96989d;cursor:pointer;display:flex;align-items:center;justify-content:space-between;font-size:14px;transition:all .15s}
-.channel:hover{background:#3a3c42;color:#dcddde}
-.channel.active{background:#404249;color:#fff}
-.channel-name{display:flex;align-items:center}
-.channel-name::before{content:'#';margin-right:6px;font-weight:600;color:#72767d}
-.user-area{height:52px;background:#292b2f;padding:0 8px;display:flex;align-items:center}
-.my-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;margin-right:8px;font-size:14px;background:#5865f2}
-.conn-status{width:12px;height:12px;border-radius:50%;background:#ed4245;margin-left:auto;transition:background .3s}
-.conn-status.online{background:#3ba55d}
-.main-content{flex:1;display:flex;flex-direction:column;background:#36393f}
-.chat-header{height:48px;padding:0 16px;display:flex;align-items:center;border-bottom:1px solid #202225;color:#fff;font-weight:600;font-size:16px}
-.messages{flex:1;overflow-y:auto;padding:16px}
-.message{display:flex;padding:8px;margin-bottom:8px;background:rgba(0,0,0,.1);border-radius:4px}
-.msg-avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;margin-right:16px;flex-shrink:0}
-.msg-content{flex:1}
-.msg-author{font-weight:500;font-size:15px;margin-bottom:4px}
-.msg-text{color:#dcddde;font-size:15px;line-height:1.4}
-.input-area{padding:16px}
-.input-wrapper{background:#40444b;border-radius:8px;padding:12px;display:flex;align-items:center}
-.msg-input{flex:1;background:none;border:none;color:#dcddde;font-size:15px;outline:none}
-.send-btn{background:#5865f2;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:500;margin-left:8px}
-.send-btn:disabled{background:#4e5058;opacity:.5}
-#loginOverlay{position:fixed;inset:0;z-index:2000;background:linear-gradient(135deg,#1a1c20,#2f3136);display:flex;align-items:center;justify-content:center}
-#loginCard{width:400px;background:#2f3136;border:1px solid #202225;border-radius:8px;padding:32px;color:#fff}
-#loginCard h1{margin-bottom:8px;font-size:24px;text-align:center}
-#loginCard p{text-align:center;color:#96989d;margin-bottom:24px;font-size:14px}
-.input-group{margin-bottom:16px}
-.input-label{display:block;font-size:12px;font-weight:600;color:#96989d;margin-bottom:8px;text-transform:uppercase}
-.login-input{width:100%;padding:10px;border-radius:4px;border:1px solid #202225;background:#202225;color:#fff;font-size:14px}
-.login-btn{width:100%;margin-top:8px;padding:12px;border:none;border-radius:4px;background:#5865f2;color:#fff;cursor:pointer;font-weight:600;font-size:14px}
-.role-info{margin-top:16px;padding:12px;background:#202225;border-radius:4px;font-size:12px;color:#96989d}
-.users-section{flex:1;overflow-y:auto;padding:8px}
-.user-item{padding:8px 12px;color:#dcddde;font-size:13px;border-radius:4px;margin:4px}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Chet</title>
+    <link rel="icon" type="image/png" id="favicon">
+    <style>
+        * {margin: 0;padding: 0;box-sizing: border-box;}
+        body {font-family: 'gg sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;height: 100vh;overflow: hidden;background: #36393f; color: #dcddde;}
+        
+        /* 3-Column Layout */
+        .container {display: flex;height: 100vh;}
+        
+        /* Left Sidebar (Channels) */
+        .sidebar {width: 240px;background: #2f3136;display: flex;flex-direction: column;flex-shrink: 0;}
+        .server-header {height: 48px;padding: 0 16px;display: flex;align-items: center;border-bottom: 1px solid #202225;color: #fff;font-weight: 700;font-size: 16px;box-shadow: 0 1px 0 rgba(4,4,5,0.2);z-index: 2;}
+        .channels {flex: 1;overflow-y: auto;padding: 8px;}
+        .channel-section {margin-bottom: 16px; margin-top: 8px;}
+        .section-header {color: #96989d;font-size: 12px;font-weight: 700;text-transform: uppercase;margin-bottom: 4px;padding: 0 8px; transition: color 0.1s;}
+        .section-header:hover {color: #fff;}
+        .channel {padding: 6px 8px;margin: 1px 0;border-radius: 4px;color: #96989d;cursor: pointer;display: flex;align-items: center;font-size: 16px;transition: all 0.1s;position: relative;}
+        .channel:hover {background: #393c43;color: #dcddde;}
+        .channel.active {background: #393c43;color: #fff;}
+        .channel-name {display: flex;align-items: center;flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;}
+        .channel-name::before {content: '#';margin-right: 6px;font-size: 20px;color: #72767d; font-weight: 400;}
+        .channel.private .channel-name::before {content: '@'; font-size: 16px;}
+        .unread-badge {background: #ed4245;color: #fff;border-radius: 8px;padding: 0 6px;font-size: 12px;font-weight: 700;min-width: 16px;text-align: center; margin-left: auto;}
+        
+        /* User Area (Bottom Left) */
+        .user-area {height: 52px;background: #292b2f;padding: 0 8px;display: flex;align-items: center;font-size: 14px;}
+        .user-avatar-small {width: 32px;height: 32px;border-radius: 50%;background: #5865f2;margin-right: 8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px; position: relative;}
+        .user-info-text {flex: 1; display: flex; flex-direction: column;}
+        .username-display {color: #fff;font-weight: 600;font-size: 14px;}
+        .user-status-text {font-size: 12px; color: #b9bbbe;}
+        .admin-lock-btn {background: transparent; border: none; color: #b9bbbe; cursor: pointer; padding: 8px; border-radius: 4px; transition: 0.2s;}
+        .admin-lock-btn:hover {background: #36393f; color: #fff;}
+        .admin-lock-btn.active {color: #3ba55d;}
+
+        /* Main Content (Chat) */
+        .main-content {flex: 1;display: flex;flex-direction: column;background: #36393f; min-width: 0; position: relative;}
+        .chat-header {height: 48px;padding: 0 16px;display: flex;align-items: center;border-bottom: 1px solid #26272d;color: #fff;box-shadow: 0 1px 0 rgba(4,4,5,0.02); z-index: 1;}
+        .messages {flex: 1;overflow-y: auto;padding: 0 16px; overflow-x: hidden; scroll-behavior: smooth;}
+        .message {display: flex;margin-top: 17px; padding: 2px 0;}
+        .message:hover {background: rgba(4,4,5,0.07);}
+        .message-avatar {width: 40px;height: 40px;border-radius: 50%;background: #5865f2;margin-right: 16px;flex-shrink: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff;}
+        .message-avatar:hover {opacity: 0.8;}
+        .message-header {display: flex;align-items: center;margin-bottom: 2px;}
+        .message-author {color: #fff;font-weight: 500;font-size: 16px;margin-right: 8px; cursor: pointer;}
+        .message-author:hover {text-decoration: underline;}
+        .message-timestamp {color: #72767d;font-size: 12px; margin-left: 4px;}
+        .message-text {color: #dcddde;font-size: 16px;line-height: 1.375rem; white-space: pre-wrap; word-wrap: break-word;}
+        
+        /* Input Area */
+        .input-area {padding: 0 16px 24px;}
+        .input-wrapper {background: #40444b;border-radius: 8px;padding: 0 16px;display: flex;align-items: center; min-height: 44px;}
+        .message-input {flex: 1;background: none;border: none;color: #dcddde;font-size: 16px;outline: none; padding: 11px 0;}
+
+        /* Right Sidebar (User List) */
+        .right-sidebar {width: 240px;background: #2f3136;display: flex;flex-direction: column;border-left: 1px solid #202225;}
+        .members-header {height: 48px; display: flex; align-items: center; padding: 0 16px; font-weight: 700; color: #96989d; font-size: 12px; text-transform: uppercase; box-shadow: 0 1px 0 rgba(4,4,5,0.02);}
+        .members-list {flex: 1; overflow-y: auto; padding: 0 8px;}
+        .member-group-title {padding: 16px 8px 8px; color: #96989d; font-weight: 700; font-size: 12px; text-transform: uppercase;}
+        .member {display: flex; align-items: center; padding: 6px 8px; border-radius: 4px; cursor: pointer; opacity: 0.9; transition: 0.1s;}
+        .member:hover {background: #36393f; opacity: 1;}
+        .member-avatar {width: 32px; height: 32px; border-radius: 50%; background: #5865f2; margin-right: 12px; position: relative; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 600;}
+        .member-status {position: absolute; bottom: -2px; right: -2px; width: 14px; height: 14px; border-radius: 50%; background: #3ba55d; border: 3px solid #2f3136;}
+        .member-name {color: #fff; font-weight: 500; font-size: 15px;}
+        
+        /* Admin Menu (Context Menu) */
+        .admin-menu {position: fixed; background: #18191c; border-radius: 4px; width: 220px; padding: 6px 8px; z-index: 1000; box-shadow: 0 8px 16px rgba(0,0,0,0.24); display: none;}
+        .admin-menu.visible {display: block;}
+        .admin-header {padding: 8px; color: #b9bbbe; font-size: 12px; font-weight: 700; text-transform: uppercase; border-bottom: 1px solid #2f3136; margin-bottom: 4px;}
+        .admin-item {padding: 8px; border-radius: 2px; color: #b9bbbe; font-size: 14px; cursor: pointer; display: flex; justify-content: space-between; transition: 0.1s;}
+        .admin-item:hover {background: #4752c4; color: #fff;}
+        .admin-item.danger {color: #ed4245;}
+        .admin-item.danger:hover {background: #ed4245; color: #fff;}
+        
+        /* Modals and Utilities */
+        .typing-indicator {position: absolute; bottom: 80px; left: 20px; font-size: 12px; font-weight: 700; color: #dcddde; animation: pulse 2s infinite;}
+        .image-preview {padding: 10px; margin-bottom: 10px; background: #2f3136; border-radius: 8px; display: inline-flex; align-items: center; gap: 10px;}
+        .preview-img {max-height: 200px; border-radius: 4px;}
+        .modal {display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 2000; align-items: center; justify-content: center;}
+        .modal.active {display: flex;}
+        .modal img {max-width: 90vw; max-height: 90vh; border-radius: 4px;}
+
+        ::-webkit-scrollbar {width: 8px; height: 8px;}
+        ::-webkit-scrollbar-track {background: #2b2d31; border-radius: 4px;}
+        ::-webkit-scrollbar-thumb {background: #1a1b1e; border-radius: 4px;}
+    </style>
 </head>
 <body>
-<div id="loginOverlay">
-<div id="loginCard">
-<h1>🔍 Discord Clone - Debug Mode</h1>
-<p>Watch the console at the bottom for diagnostic info</p>
-<div class="input-group">
-<label class="input-label">Username</label>
-<input type="text" class="login-input" id="usernameInput" placeholder="Enter your username" value="TestUser">
-</div>
-<div class="input-group">
-<label class="input-label">Role Passcode (Optional)</label>
-<input type="password" class="login-input" id="passcodeInput" placeholder="Leave blank for member">
-</div>
-<button class="login-btn" id="loginBtn">Join Server</button>
-<div class="role-info">
-<strong>Debug Info:</strong><br>
-This version shows connection status and errors
-</div>
-</div>
-</div>
+    <div class="admin-menu" id="adminMenu">
+        <div class="admin-header" id="adminTargetName">User Settings</div>
+        <div class="admin-item" onclick="adminAction('mute', 1)">Mute 1 Minute</div>
+        <div class="admin-item" onclick="adminAction('mute', 5)">Mute 5 Minutes</div>
+        <div class="admin-item" onclick="adminAction('mute', 999999)">Mute Forever</div>
+        <div class="admin-item danger" onclick="adminAction('kick')">Kick to Google</div>
+        <div class="admin-item danger" onclick="adminAction('ban')">Ban IP Address</div>
+    </div>
 
-<div class="container">
-<div class="sidebar">
-<div class="server-header">Discord Clone</div>
-<div class="channels">
-<div class="channel-section">
-<div class="section-header">Text Channels</div>
-<div class="channel active" data-channel="general">
-<span class="channel-name">general</span>
-</div>
-</div>
-</div>
-<div class="user-area">
-<div class="my-avatar" id="myAvatar">U</div>
-<div style="flex:1">
-<div style="font-size:14px;font-weight:500;color:#fff" id="myUsername">User</div>
-<div style="font-size:12px;color:#72767d" id="statusText">Offline</div>
-</div>
-<div class="conn-status" id="connStatus"></div>
-</div>
-</div>
+    <div class="modal" id="imageModal" onclick="this.classList.remove('active')">
+        <img id="modalImg" src="">
+    </div>
 
-<div class="main-content">
-<div class="chat-header">
-<div id="currentChannel">#general</div>
-</div>
-<div class="messages" id="messagesArea"></div>
-<div class="input-area">
-<div class="input-wrapper">
-<input type="text" class="msg-input" id="messageInput" placeholder="Message #general">
-<button class="send-btn" id="sendBtn" disabled>Send</button>
-</div>
-</div>
-</div>
+    <div class="container">
+        <div class="sidebar">
+            <div class="server-header">The Chet</div>
+            <div class="channels" id="channelList">
+                <div class="channel-section">
+                    <div class="section-header">Text Channels</div>
+                    <div class="channel active" data-id="general"><span class="channel-name">general</span></div>
+                    <div class="channel" data-id="gaming"><span class="channel-name">gaming</span></div>
+                    <div class="channel" data-id="memes"><span class="channel-name">memes</span></div>
+                    <div class="channel" data-id="random"><span class="channel-name">random</span></div>
+                </div>
+                <div class="channel-section">
+                    <div class="section-header">Direct Messages</div>
+                    <div id="dmList"></div>
+                </div>
+            </div>
+            
+            <div class="user-area">
+                <div class="user-avatar-small" id="userAvatar"></div>
+                <div class="user-info-text">
+                    <div class="username-display" id="usernameDisplay">...</div>
+                    <div class="user-status-text" id="connectionStatus">Connecting...</div>
+                </div>
+                <button class="admin-lock-btn" id="adminBtn" title="Admin Login">🔒</button>
+            </div>
+        </div>
 
-<div class="sidebar right">
-<div class="server-header">Members</div>
-<div class="users-section" id="usersList">
-<div style="padding:12px;color:#72767d;text-align:center">Waiting for connection...</div>
-</div>
-</div>
-</div>
+        <div class="main-content">
+            <div class="chat-header">
+                <span style="font-size: 24px; color: #72767d; margin-right: 8px;">#</span>
+                <span style="font-weight: 700;" id="currentChannelHeader">general</span>
+            </div>
+            
+            <div class="messages" id="messageArea"></div>
+            <div class="typing-indicator" id="typingIndicator"></div>
+            
+            <div class="input-area">
+                <div id="imagePreviewContainer"></div>
+                <div class="input-wrapper">
+                    <button style="background:none;border:none;color:#b9bbbe;font-size:24px;cursor:pointer;margin-right:12px;" onclick="document.getElementById('fileInput').click()">+</button>
+                    <input type="file" id="fileInput" hidden accept="image/*">
+                    <input type="text" class="message-input" id="messageInput" placeholder="Message #general" maxlength="2000">
+                </div>
+            </div>
+        </div>
 
-<div class="debug-panel" id="debugPanel"></div>
+        <div class="right-sidebar">
+            <div class="members-header">Online Users</div>
+            <div class="members-list">
+                <div class="member-group-title" id="onlineCount">ONLINE — 0</div>
+                <div id="memberList"></div>
+            </div>
+        </div>
+    </div>
 
 <script>
-const $ = id => document.getElementById(id);
-let ws, username = '', role = 'user';
-
-function log(msg, type = 'info') {
-  const panel = $('debugPanel');
-  const time = new Date().toLocaleTimeString();
-  const entry = document.createElement('div');
-  entry.className = type;
-  entry.textContent = `[${time}] ${msg}`;
-  panel.appendChild(entry);
-  panel.scrollTop = panel.scrollHeight;
-  console.log(`[${type.toUpperCase()}]`, msg);
-}
-
-function connect() {
-  log('🔌 Attempting to connect to ws://localhost:3001...', 'info');
-  
-  try {
-    ws = new WebSocket('ws://localhost:3001');
-    
-    ws.onopen = function() {
-      log('✅ WebSocket connection opened!', 'success');
-      $('connStatus').classList.add('online');
-      $('statusText').textContent = 'Online';
-      $('statusText').style.color = '#3ba55d';
-      $('sendBtn').disabled = false;
-      
-      const joinMsg = {
-        type: 'join',
-        username: username,
-        role: role
-      };
-      log('📤 Sending join message: ' + JSON.stringify(joinMsg), 'info');
-      ws.send(JSON.stringify(joinMsg));
+    // State
+    const state = {
+        username: '',
+        isAdmin: false,
+        ws: null,
+        currentChannel: 'general',
+        chatType: 'public', // 'public' or 'private'
+        privateChatId: null,
+        targetUser: null, // For DMs
+        selectedAdminTarget: null // User being acted upon by admin
     };
 
-    ws.onerror = function(error) {
-      log('❌ WebSocket ERROR: ' + error, 'error');
-      log('⚠️ Make sure the server is running on port 3001!', 'warning');
+    // UI Elements
+    const els = {
+        msgArea: document.getElementById('messageArea'),
+        input: document.getElementById('messageInput'),
+        memberList: document.getElementById('memberList'),
+        onlineCount: document.getElementById('onlineCount'),
+        header: document.getElementById('currentChannelHeader'),
+        dmList: document.getElementById('dmList'),
+        adminMenu: document.getElementById('adminMenu'),
+        adminBtn: document.getElementById('adminBtn'),
+        preview: document.getElementById('imagePreviewContainer')
     };
 
-    ws.onclose = function(event) {
-      log('🔌 WebSocket closed. Code: ' + event.code + ', Reason: ' + event.reason, 'warning');
-      $('connStatus').classList.remove('online');
-      $('statusText').textContent = 'Disconnected';
-      $('statusText').style.color = '#ed4245';
-      $('sendBtn').disabled = true;
-      log('🔄 Reconnecting in 3 seconds...', 'info');
-      setTimeout(connect, 3000);
+    // --- Admin Logic ---
+    els.adminBtn.onclick = () => {
+        if(state.isAdmin) return alert("You are already an admin.");
+        const pass = prompt("Enter Admin Password:");
+        if(pass) send({ type: 'adminLogin', password: pass });
     };
 
-    ws.onmessage = function(e) {
-      log('📥 Received message: ' + e.data.substring(0, 100) + '...', 'info');
-      try {
-        const data = JSON.parse(e.data);
-        handleMessage(data);
-      } catch (err) {
-        log('❌ Error parsing message: ' + err.message, 'error');
-      }
-    };
-  } catch (err) {
-    log('❌ Failed to create WebSocket: ' + err.message, 'error');
-  }
-}
-
-function handleMessage(data) {
-  log('📨 Handling message type: ' + data.type, 'info');
-  
-  switch(data.type) {
-    case 'users':
-      log('👥 Received users list: ' + data.users.length + ' users', 'success');
-      renderUsers(data.users);
-      break;
-    case 'message':
-      log('💬 Received channel message from ' + data.username, 'success');
-      displayMessage(data);
-      break;
-    case 'error':
-      log('❌ Server error: ' + data.message, 'error');
-      break;
-    default:
-      log('⚠️ Unknown message type: ' + data.type, 'warning');
-  }
-}
-
-function renderUsers(users) {
-  const html = users.map(u => 
-    `<div class="user-item">
-      <div style="display:flex;align-items:center">
-        <div class="msg-avatar" style="width:24px;height:24px;font-size:11px;margin-right:8px;background:#5865f2">
-          ${u.username.charAt(0).toUpperCase()}
-        </div>
-        ${u.username} ${u.role !== 'user' ? '(' + u.role + ')' : ''}
-      </div>
-    </div>`
-  ).join('');
-  $('usersList').innerHTML = html || '<div style="padding:12px;color:#72767d;text-align:center">No users</div>';
-}
-
-function displayMessage(msg) {
-  const msgEl = document.createElement('div');
-  msgEl.className = 'message';
-  msgEl.innerHTML = `
-    <div class="msg-avatar" style="background:#5865f2">
-      ${msg.username.charAt(0).toUpperCase()}
-    </div>
-    <div class="msg-content">
-      <div class="msg-author">${msg.username}</div>
-      <div class="msg-text">${escapeHtml(msg.message)}</div>
-    </div>
-  `;
-  $('messagesArea').appendChild(msgEl);
-  $('messagesArea').scrollTop = $('messagesArea').scrollHeight;
-}
-
-function sendMessage() {
-  const text = $('messageInput').value.trim();
-  if (!text || !ws || ws.readyState !== WebSocket.OPEN) {
-    log('⚠️ Cannot send message - not connected', 'warning');
-    return;
-  }
-  
-  const msg = {
-    type: 'message',
-    channel: 'general',
-    message: text
-  };
-  log('📤 Sending message: ' + text, 'info');
-  ws.send(JSON.stringify(msg));
-  $('messageInput').value = '';
-}
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-// Event Listeners
-document.addEventListener('DOMContentLoaded', () => {
-  log('🚀 Page loaded! Ready to connect.', 'success');
-  
-  $('loginBtn').onclick = function() {
-    username = $('usernameInput').value.trim();
-    const pass = $('passcodeInput').value.trim();
-    
-    if (!username) {
-      log('❌ Username is required!', 'error');
-      alert('Please enter a username');
-      return;
+    function showAdminMenu(e, username) {
+        if (!state.isAdmin || username === state.username) return;
+        e.preventDefault();
+        state.selectedAdminTarget = username;
+        document.getElementById('adminTargetName').textContent = username;
+        els.adminMenu.style.top = `${e.clientY}px`;
+        els.adminMenu.style.left = `${e.clientX - 220}px`; // Show to left of cursor
+        els.adminMenu.classList.add('visible');
     }
-    
-    if (pass === '10owna12') {
-      role = 'owner';
-      log('👑 Logging in as OWNER', 'success');
-    } else if (pass === 'nimda-1818') {
-      role = 'admin';
-      log('⚡ Logging in as ADMIN', 'success');
-    } else {
-      role = 'user';
-      log('👤 Logging in as USER', 'info');
+
+    function adminAction(action, duration = 0) {
+        send({
+            type: 'adminAction',
+            action: action,
+            target: state.selectedAdminTarget,
+            duration: duration
+        });
+        els.adminMenu.classList.remove('visible');
     }
-    
-    $('myUsername').textContent = username;
-    $('myAvatar').textContent = username.charAt(0).toUpperCase();
-    $('loginOverlay').style.display = 'none';
-    
-    log('✅ Login successful! Username: ' + username + ', Role: ' + role, 'success');
-    connect();
-  };
-  
-  $('sendBtn').onclick = sendMessage;
-  $('messageInput').onkeypress = function(e) {
-    if (e.key === 'Enter') sendMessage();
-  };
-});
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.admin-menu')) els.adminMenu.classList.remove('visible');
+    });
+
+    // --- Core Logic ---
+    function init() {
+        state.username = prompt("Enter username:") || "User" + Math.floor(Math.random()*1000);
+        document.getElementById('usernameDisplay').textContent = state.username;
+        document.getElementById('userAvatar').textContent = state.username[0].toUpperCase();
+        connect();
+    }
+
+    function connect() {
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        state.ws = new WebSocket(`${protocol}//${location.host}`);
+        
+        state.ws.onopen = () => {
+            document.getElementById('connectionStatus').textContent = "Online";
+            document.getElementById('connectionStatus').style.color = "#3ba55d";
+            send({ type: 'join', username: state.username });
+            send({ type: 'getHistory', channel: 'general' });
+        };
+
+        state.ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
+        
+        state.ws.onclose = () => {
+            document.getElementById('connectionStatus').textContent = "Disconnected";
+            document.getElementById('connectionStatus').style.color = "#ed4245";
+            setTimeout(connect, 3000);
+        };
+    }
+
+    function send(data) {
+        if(state.ws && state.ws.readyState === 1) state.ws.send(JSON.stringify(data));
+    }
+
+    function handleMessage(data) {
+        switch(data.type) {
+            case 'message': renderMessage(data.message); break;
+            case 'history': 
+                els.msgArea.innerHTML = ''; 
+                data.messages.forEach(renderMessage); 
+                break;
+            case 'userList': updateMembers(data.users); break;
+            case 'adminSuccess': 
+                state.isAdmin = true; 
+                els.adminBtn.classList.add('active');
+                alert("Admin Mode Enabled");
+                break;
+            case 'kicked': 
+                // THE KICK LOGIC
+                window.location.href = "https://www.google.com";
+                break;
+            case 'error': alert(data.message); break;
+            
+            // Basic DM handling
+            case 'privateChatRequest':
+                if(confirm(`${data.from} wants to DM. Accept?`)) {
+                    send({ type: 'privateChatResponse', from: data.from, accepted: true });
+                }
+                break;
+            case 'privateChatAccepted':
+                startDM(data.chatId, data.with);
+                break;
+            case 'privateMessage':
+                if(state.chatType === 'private' && state.privateChatId === data.message.chatId) {
+                    renderMessage(data.message);
+                }
+                break;
+        }
+    }
+
+    // --- Rendering ---
+    function updateMembers(users) {
+        els.memberList.innerHTML = '';
+        els.onlineCount.textContent = `ONLINE — ${users.length}`;
+        users.forEach(u => {
+            const div = document.createElement('div');
+            div.className = 'member';
+            div.innerHTML = `
+                <div class="member-avatar">${u[0].toUpperCase()}<div class="member-status"></div></div>
+                <div class="member-name">${u}</div>
+            `;
+            // Left click to DM, Right click for Admin
+            div.onclick = () => requestDM(u);
+            div.oncontextmenu = (e) => showAdminMenu(e, u);
+            els.memberList.appendChild(div);
+        });
+    }
+
+    function renderMessage(msg) {
+        if(state.chatType === 'public' && msg.channel !== state.currentChannel) return;
+        
+        const div = document.createElement('div');
+        div.className = 'message';
+        
+        let content = `<div class="message-text">${msg.text || ''}</div>`;
+        if(msg.isImage) {
+            content = `<img src="${msg.imageData}" style="max-width:300px;border-radius:8px;cursor:pointer" onclick="document.getElementById('modalImg').src=this.src;document.getElementById('imageModal').classList.add('active')">`;
+        }
+
+        div.innerHTML = `
+            <div class="message-avatar" onclick="showAdminMenu(event, '${msg.author}')">${msg.author[0].toUpperCase()}</div>
+            <div style="flex:1">
+                <div class="message-header">
+                    <span class="message-author" onclick="showAdminMenu(event, '${msg.author}')">${msg.author}</span>
+                    <span class="message-timestamp">${new Date(msg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                </div>
+                ${content}
+            </div>
+        `;
+        els.msgArea.appendChild(div);
+        els.msgArea.scrollTop = els.msgArea.scrollHeight;
+    }
+
+    // --- Interaction ---
+    function requestDM(target) {
+        if(target === state.username) return;
+        if(!confirm(`Start DM with ${target}?`)) return;
+        send({ type: 'privateChatRequest', targetUsername: target });
+    }
+
+    function startDM(chatId, withUser) {
+        state.chatType = 'private';
+        state.privateChatId = chatId;
+        state.targetUser = withUser;
+        state.currentChannel = null;
+        
+        els.header.textContent = '@' + withUser;
+        els.input.placeholder = `Message @${withUser}`;
+        els.msgArea.innerHTML = '';
+        
+        // Add to Sidebar if not exists
+        if(!document.querySelector(`[data-chat="${chatId}"]`)) {
+            const d = document.createElement('div');
+            d.className = 'channel private active';
+            d.dataset.chat = chatId;
+            d.innerHTML = `<span class="channel-name">${withUser}</span>`;
+            d.onclick = () => startDM(chatId, withUser);
+            els.dmList.appendChild(d);
+        }
+        
+        // Deselect public channels
+        document.querySelectorAll('.channel').forEach(c => c.classList.remove('active'));
+    }
+
+    // Channel Switching
+    document.getElementById('channelList').onclick = (e) => {
+        const ch = e.target.closest('.channel');
+        if(!ch || ch.classList.contains('private')) return;
+        
+        document.querySelectorAll('.channel').forEach(c => c.classList.remove('active'));
+        ch.classList.add('active');
+        
+        state.currentChannel = ch.dataset.id;
+        state.chatType = 'public';
+        state.privateChatId = null;
+        els.header.textContent = state.currentChannel;
+        els.input.placeholder = `Message #${state.currentChannel}`;
+        send({ type: 'getHistory', channel: state.currentChannel });
+    };
+
+    // Sending Messages
+    els.input.addEventListener('keypress', (e) => {
+        if(e.key === 'Enter') {
+            const text = els.input.value.trim();
+            if(!text) return;
+            
+            const payload = {
+                type: state.chatType === 'private' ? 'privateMessage' : 'message',
+                text: text,
+                channel: state.currentChannel,
+                chatId: state.privateChatId,
+                targetUsername: state.targetUser
+            };
+            send(payload);
+            els.input.value = '';
+        }
+    });
+
+    // File Upload (Simple base64)
+    document.getElementById('fileInput').onchange = (e) => {
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const payload = {
+                type: state.chatType === 'private' ? 'privateImageMessage' : 'imageMessage',
+                imageData: ev.target.result,
+                channel: state.currentChannel,
+                chatId: state.privateChatId,
+                targetUsername: state.targetUser
+            };
+            send(payload);
+        };
+        reader.readAsDataURL(file);
+    };
+
+    init();
 </script>
 </body>
 </html>
