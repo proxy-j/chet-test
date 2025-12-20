@@ -493,19 +493,14 @@ if(!acts)setTimeout(()=>n.remove(),4000);
 return n;
 }
 
-// Upload image
+// Upload image - convert to base64
 async function uploadImage(file){
-const fd=new FormData();
-fd.append('image',file);
-try{
-const res=await fetch('/upload',{method:'POST',body:fd});
-const data=await res.json();
-if(data.imageUrl)return data.imageUrl;
-throw new Error('Upload failed');
-}catch(e){
-notify('❌','Failed to upload image');
-return null;
-}
+return new Promise((resolve,reject)=>{
+const reader=new FileReader();
+reader.onload=()=>resolve(reader.result);
+reader.onerror=reject;
+reader.readAsDataURL(file);
+});
 }
 
 function connect(){
@@ -740,9 +735,14 @@ return;
 let imageUrl=null;
 if(selectedImage){
 $('sendBtn').disabled=true;
+try{
 imageUrl=await uploadImage(selectedImage);
+}catch(e){
+notify('❌','Failed to process image');
+}
 selectedImage=null;
 $('imagePreviewContainer').innerHTML='';
+$('imageInput').value='';
 $('sendBtn').disabled=false;
 if(!imageUrl&&!t)return;
 }
@@ -1378,19 +1378,14 @@ if(!acts)setTimeout(()=>n.remove(),4000);
 return n;
 }
 
-// Upload image
+// Upload image - convert to base64
 async function uploadImage(file){
-const fd=new FormData();
-fd.append('image',file);
-try{
-const res=await fetch('/upload',{method:'POST',body:fd});
-const data=await res.json();
-if(data.imageUrl)return data.imageUrl;
-throw new Error('Upload failed');
-}catch(e){
-notify('❌','Failed to upload image');
-return null;
-}
+return new Promise((resolve,reject)=>{
+const reader=new FileReader();
+reader.onload=()=>resolve(reader.result);
+reader.onerror=reject;
+reader.readAsDataURL(file);
+});
 }
 
 function connect(){
@@ -1625,9 +1620,14 @@ return;
 let imageUrl=null;
 if(selectedImage){
 $('sendBtn').disabled=true;
+try{
 imageUrl=await uploadImage(selectedImage);
+}catch(e){
+notify('❌','Failed to process image');
+}
 selectedImage=null;
 $('imagePreviewContainer').innerHTML='';
+$('imageInput').value='';
 $('sendBtn').disabled=false;
 if(!imageUrl&&!t)return;
 }
@@ -2263,19 +2263,14 @@ if(!acts)setTimeout(()=>n.remove(),4000);
 return n;
 }
 
-// Upload image
+// Upload image - convert to base64
 async function uploadImage(file){
-const fd=new FormData();
-fd.append('image',file);
-try{
-const res=await fetch('/upload',{method:'POST',body:fd});
-const data=await res.json();
-if(data.imageUrl)return data.imageUrl;
-throw new Error('Upload failed');
-}catch(e){
-notify('❌','Failed to upload image');
-return null;
-}
+return new Promise((resolve,reject)=>{
+const reader=new FileReader();
+reader.onload=()=>resolve(reader.result);
+reader.onerror=reject;
+reader.readAsDataURL(file);
+});
 }
 
 function connect(){
@@ -2510,9 +2505,14 @@ return;
 let imageUrl=null;
 if(selectedImage){
 $('sendBtn').disabled=true;
+try{
 imageUrl=await uploadImage(selectedImage);
+}catch(e){
+notify('❌','Failed to process image');
+}
 selectedImage=null;
 $('imagePreviewContainer').innerHTML='';
+$('imageInput').value='';
 $('sendBtn').disabled=false;
 if(!imageUrl&&!t)return;
 }
@@ -3148,19 +3148,14 @@ if(!acts)setTimeout(()=>n.remove(),4000);
 return n;
 }
 
-// Upload image
+// Upload image - convert to base64
 async function uploadImage(file){
-const fd=new FormData();
-fd.append('image',file);
-try{
-const res=await fetch('/upload',{method:'POST',body:fd});
-const data=await res.json();
-if(data.imageUrl)return data.imageUrl;
-throw new Error('Upload failed');
-}catch(e){
-notify('❌','Failed to upload image');
-return null;
-}
+return new Promise((resolve,reject)=>{
+const reader=new FileReader();
+reader.onload=()=>resolve(reader.result);
+reader.onerror=reject;
+reader.readAsDataURL(file);
+});
 }
 
 function connect(){
@@ -3395,9 +3390,14 @@ return;
 let imageUrl=null;
 if(selectedImage){
 $('sendBtn').disabled=true;
+try{
 imageUrl=await uploadImage(selectedImage);
+}catch(e){
+notify('❌','Failed to process image');
+}
 selectedImage=null;
 $('imagePreviewContainer').innerHTML='';
+$('imageInput').value='';
 $('sendBtn').disabled=false;
 if(!imageUrl&&!t)return;
 }
