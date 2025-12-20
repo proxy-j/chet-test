@@ -326,8 +326,10 @@ function handlePrivateChatRequest(ws, data) {
     return;
   }
 
+  // Check if chat already exists between these users
   for (const [chatId, participants] of privateChatParticipants.entries()) {
     if (participants.includes(user.uuid) && participants.includes(target.user.uuid)) {
+      // Chat already exists, send it to requester WITHOUT notifying target
       ws.send(JSON.stringify({
         type: 'privateChatAccepted',
         chatId,
@@ -337,6 +339,7 @@ function handlePrivateChatRequest(ws, data) {
     }
   }
 
+  // No existing chat, send request to target
   target.ws.send(JSON.stringify({
     type: 'privateChatRequest',
     from: user.username,
