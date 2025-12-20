@@ -465,7 +465,21 @@ notifPermission=true;
 // Show browser notification
 function showBrowserNotif(title,body,icon='💬'){
 if(notifPermission&&!isTabVisible){
-new Notification(title,{body,icon:location.origin+'/favicon.ico',tag:'chat-notif',requireInteraction:false});
+try{
+const notif=new Notification(title,{
+body,
+icon:location.origin+'/favicon.ico',
+tag:`chat-${Date.now()}`,
+requireInteraction:false,
+silent:false
+});
+notif.onclick=()=>{
+window.focus();
+notif.close();
+};
+}catch(e){
+console.error('Notification error:',e);
+}
 }
 }
 
@@ -493,11 +507,35 @@ if(!acts)setTimeout(()=>n.remove(),4000);
 return n;
 }
 
-// Upload image - convert to base64
+// Upload image - convert to base64 with compression
 async function uploadImage(file){
 return new Promise((resolve,reject)=>{
 const reader=new FileReader();
-reader.onload=()=>resolve(reader.result);
+reader.onload=(e)=>{
+const img=new Image();
+img.onload=()=>{
+const canvas=document.createElement('canvas');
+let width=img.width;
+let height=img.height;
+const maxDim=800;
+if(width>maxDim||height>maxDim){
+if(width>height){
+height=Math.round(height*maxDim/width);
+width=maxDim;
+}else{
+width=Math.round(width*maxDim/height);
+height=maxDim;
+}
+}
+canvas.width=width;
+canvas.height=height;
+const ctx=canvas.getContext('2d');
+ctx.drawImage(img,0,0,width,height);
+resolve(canvas.toDataURL('image/jpeg',0.7));
+};
+img.onerror=reject;
+img.src=e.target.result;
+};
 reader.onerror=reject;
 reader.readAsDataURL(file);
 });
@@ -543,8 +581,9 @@ if(d.isOwner){isOwner=true;$('badgeOwner').classList.add('show');$('ownerTab').s
 message:()=>{
 if(!messages[d.message.channel])messages[d.message.channel]=[];
 messages[d.message.channel].push(d.message);
-if(d.message.channel===curChan&&chatType==='channel')render();
-else{
+if(d.message.channel===curChan&&chatType==='channel'){
+render();
+}else{
 unreadChannels[d.message.channel]=(unreadChannels[d.message.channel]||0)+1;
 updateUnreadBadge(d.message.channel);
 showFaviconNotif();
@@ -562,15 +601,20 @@ showBrowserNotif('DM Request',`${d.from} wants to chat with you`);
 n.querySelector('[data-a="y"]').onclick=()=>{send({type:'privateChatResponse',from:d.from,accepted:true});n.remove()};
 n.querySelector('[data-a="n"]').onclick=()=>{send({type:'privateChatResponse',from:d.from,accepted:false});n.remove()};
 },
-privateChatAccepted:()=>{dmPartners[d.chatId]=d.with;addDM(d.chatId,d.with);switchDM(d.chatId,d.with)},
+privateChatAccepted:()=>{
+dmPartners[d.chatId]=d.with;
+addDM(d.chatId,d.with);
+switchDM(d.chatId,d.with);
+},
 privateChatRejected:()=>notify('❌',`${d.by} declined`),
 privateMessage:()=>{
 if(!dmMessages[d.message.chatId])dmMessages[d.message.chatId]=[];
 if(!dmMessages[d.message.chatId].find(m=>m.id===d.message.id)){
 dmMessages[d.message.chatId].push(d.message);
 }
-if(d.message.chatId===curDM&&chatType==='dm')render();
-else{
+if(d.message.chatId===curDM&&chatType==='dm'){
+render();
+}else{
 unreadDMs[d.message.chatId]=(unreadDMs[d.message.chatId]||0)+1;
 updateDMBadge(d.message.chatId);
 showFaviconNotif();
@@ -673,7 +717,18 @@ send({type:'adminBan',targetUsername:username,banType:selectedBanType});
 }
 }
 
-function reqDM(u){send({type:'privateChatRequest',targetUsername:u})}
+function reqDM(u){
+// Check if DM already exists
+for(const [chatId, partner] of Object.entries(dmPartners)){
+if(partner===u){
+// DM already exists, just switch to it
+switchDM(chatId,u);
+return;
+}
+}
+// Send new DM request
+send({type:'privateChatRequest',targetUsername:u});
+}
 
 function addDM(id,name){
 if(document.querySelector(`[data-dm="${id}"]`))return;
