@@ -14,6 +14,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`HTTP: http://localhost:${PORT}`);
+  console.log(`WebSocket ready for connections`);
 });
 
 const wss = new WebSocket.Server({ server });
@@ -104,8 +106,10 @@ function canModerate(moderator, target) {
 // WebSocket connection handler
 wss.on('connection', (ws, req) => {
   const clientIP = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || 'unknown';
+  console.log(`New WebSocket connection from ${clientIP}`);
 
   if (bannedIPs.has(clientIP)) {
+    console.log(`Rejected banned IP: ${clientIP}`);
     ws.send(JSON.stringify({
       type: 'banned',
       message: 'You are banned from this server (IP ban)'
@@ -117,6 +121,7 @@ wss.on('connection', (ws, req) => {
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
+      console.log(`Received message type: ${data.type} from ${clientIP}`);
       handleMessage(ws, data, clientIP);
     } catch (error) {
       console.error('Error handling message:', error);
@@ -127,9 +132,14 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     const user = connections.get(ws);
     if (user) {
+      console.log(`User disconnected: ${user.username}`);
       connections.delete(ws);
       broadcast({ type: 'userList', users: getUserList() });
     }
+  });
+
+  ws.on('error', (error) => {
+    console.error('WebSocket error:', error);
   });
 });
 
