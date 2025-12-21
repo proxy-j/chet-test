@@ -50,7 +50,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;h
 .role-badge.vip{background:linear-gradient(135deg,#f47fff,#ff6ec7)}
 .dm-btn{opacity:0;background:#5865f2;color:#fff;border:none;padding:3px 8px;border-radius:3px;font-size:10px;cursor:pointer;transition:opacity .2s}
 .user-item:hover .dm-btn{opacity:1}
-.user-area{height:52px;background:#292b2f;padding:0 8px;display:flex;align-items:center;cursor:pointer;transition:background .2s;position:relative}
+.user-area{height:52px;background:#292b2f;padding:0 8px;display:flex;align-items:center;cursor:pointer;transition:background .2s;position:relative;gap:8px}
 .user-area:hover{background:#2a2d31}
 .user-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;margin-right:8px;font-size:14px;position:relative}
 .notif-dot{position:absolute;top:-2px;right:-2px;width:12px;height:12px;background:#ed4245;border:2px solid #292b2f;border-radius:50%;animation:pulse 2s infinite;display:none}
@@ -61,9 +61,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;h
 .avatar-badge.owner{background:#e74c3c}
 .avatar-badge.admin{background:#faa61a}
 .avatar-badge.vip{background:#f47fff}
-.user-display-name{color:#fff;font-size:14px;font-weight:500}
-.conn-status{width:8px;height:8px;border-radius:50%;background:#ed4245;margin-left:auto;transition:background .3s}
+.user-display-name{color:#fff;font-size:14px;font-weight:500;flex:1}
+.conn-status{width:8px;height:8px;border-radius:50%;background:#ed4245;transition:background .3s}
 .conn-status.online{background:#3ba55d}
+.notif-toggle{background:none;border:none;color:#96989d;cursor:pointer;font-size:20px;padding:4px;border-radius:4px;transition:all .2s;display:flex;align-items:center;justify-content:center}
+.notif-toggle:hover{background:#3a3c42;color:#fff}
+.notif-toggle.active{color:#3ba55d}
 .main-content{flex:1;display:flex;flex-direction:column;background:#36393f}
 .chat-header{height:48px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #202225;color:#fff}
 .current-channel{font-weight:600;font-size:16px}
@@ -353,9 +356,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;h
 </div>
 <div class="ap-section" data-section="owner">
 <div class="owner-section">
-<div class="section-title">📢 Announcements</div>
-<input type="text" class="form-input" id="ownerAnnounce" placeholder="Persistent announcement...">
-<button class="btn btn-primary" style="width:100%;margin-top:6px" id="ownerAnnounceBtn">📢 Post Announcement</button>
+<div class="section-title">👑 Owner Controls</div>
+<p style="color:#96989d;font-size:12px;padding:8px">Advanced owner features coming soon...</p>
 </div>
 </div>
 </div>
@@ -367,10 +369,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;h
 <div class="channels">
 <div class="channel-section">
 <div class="section-header">Channels</div>
-<div class="channel" data-channel="announcements">
-<span class="channel-name">announcements</span>
-<span class="unread-badge">0</span>
-</div>
 <div class="channel active" data-channel="general">
 <span class="channel-name">general</span>
 <span class="unread-badge">0</span>
@@ -397,6 +395,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;h
 <div class="avatar-badge vip" id="badgeVip">⭐</div>
 </div>
 <div class="user-display-name" id="myName">User</div>
+<button class="notif-toggle active" id="notifToggle" title="Toggle notifications">🔔</button>
 <div class="conn-status" id="connStatus"></div>
 </div>
 </div>
@@ -448,7 +447,7 @@ let ws,connected=false,username='',uuid=null,isAdmin=false,isVIP=false,isOwner=f
 let curChan='general',chatType='channel',curDM=null,replyTo=null;
 const messages={},dmMessages={},dmPartners={},users=[],unreadChannels={},unreadDMs={};
 const $=id=>document.getElementById(id);
-let hasUnread=false,isTabVisible=true,selectedBanType='ip',selectedImage=null,notifPermission=false;
+let hasUnread=false,isTabVisible=true,selectedBanType='ip',selectedImage=null,notifPermission=false,notificationsEnabled=true;
 
 document.addEventListener('visibilitychange',()=>{isTabVisible=!document.hidden;if(isTabVisible){clearFaviconNotif()}});
 
@@ -464,7 +463,7 @@ notifPermission=true;
 
 // Show browser notification
 function showBrowserNotif(title,body,icon='💬'){
-if(notifPermission&&!isTabVisible){
+if(notifPermission&&!isTabVisible&&notificationsEnabled){
 try{
 const notif=new Notification(title,{
 body,
@@ -499,6 +498,7 @@ function clearFaviconNotif(){hasUnread=false;updateFavicon(false);$('notifDot').
 function send(d){if(ws&&ws.readyState===1)ws.send(JSON.stringify(d))}
 
 function notify(title,body,acts){
+if(!notificationsEnabled)return null;
 const n=document.createElement('div');n.className='notif';
 n.innerHTML=`<div class="notif-title">${title}</div><div class="notif-body">${body}</div>${acts||''}`;
 $('notifs').appendChild(n);
@@ -619,16 +619,23 @@ if(!dmMessages[d.message.chatId])dmMessages[d.message.chatId]=[];
 if(!dmMessages[d.message.chatId].find(m=>m.id===d.message.id)){
 dmMessages[d.message.chatId].push(d.message);
 }
-if(d.message.chatId===curDM&&chatType==='dm'){
+if(d.message.chatId===curDM&&chatType==='dm'&&isTabVisible){
 render();
 }else{
+if(d.message.chatId!==curDM||chatType!=='dm'){
 unreadDMs[d.message.chatId]=(unreadDMs[d.message.chatId]||0)+1;
 updateDMBadge(d.message.chatId);
+}
+if(!isTabVisible||d.message.chatId!==curDM||chatType!=='dm'){
 showFaviconNotif();
 const partner=dmPartners[d.message.chatId];
 const preview=d.message.imageUrl?'[Image]':d.message.text.slice(0,50);
 notify('💬 New DM',`@${partner}: ${preview}`);
 showBrowserNotif(`New DM from ${partner}`,preview);
+}
+if(d.message.chatId===curDM&&chatType==='dm'&&!isTabVisible){
+render();
+}
 }
 },
 privateHistory:()=>{dmMessages[d.chatId]=d.messages;if(d.chatId===curDM&&chatType==='dm')render()},
@@ -638,7 +645,6 @@ banned:()=>{alert(d.message);location.href='https://google.com'},
 timedOut:()=>notify('⏰',d.message),
 warning:()=>notify(`⚠️ Warning #${d.count}`,d.message),
 broadcast:()=>notify('📢',d.message),
-announcement:()=>{notify('📢',d.message.text);if(!messages.announcements)messages.announcements=[];messages.announcements.push(d.message);if(curChan==='announcements')render()},
 adminActionSuccess:()=>notify('✅',d.message||'Done'),
 error:()=>notify('❌',d.message),
 forceMute:()=>{notify('🔇',`Muted for ${d.duration}s`);$('msgInput').disabled=true;$('sendBtn').disabled=true;setTimeout(()=>{$('msgInput').disabled=false;$('sendBtn').disabled=!connected},d.duration*1000)},
@@ -725,15 +731,7 @@ send({type:'adminBan',targetUsername:username,banType:selectedBanType});
 }
 
 function reqDM(u){
-// Check if DM already exists
-for(const [chatId, partner] of Object.entries(dmPartners)){
-if(partner===u){
-// DM already exists, just switch to it
-switchDM(chatId,u);
-return;
-}
-}
-// Send new DM request
+// Always send DM request
 send({type:'privateChatRequest',targetUsername:u});
 }
 
@@ -865,6 +863,9 @@ else if(isVIP)$('badgeVip').classList.add('show');
 if(isOwner)$('ownerTab').style.display='block';
 
 uuid=localStorage.getItem('uuid')||null;
+notificationsEnabled=localStorage.getItem('notificationsEnabled')!=='false';
+$('notifToggle').classList.toggle('active',notificationsEnabled);
+$('notifToggle').textContent=notificationsEnabled?'🔔':'🔕';
 $('loginOverlay').style.display='none';
 console.log('Requesting notification permission...');
 await requestNotifPerm();
@@ -898,6 +899,15 @@ $('imageModal').onclick=()=>$('imageModal').classList.remove('show');
 $('userArea').onclick=()=>{
 clearFaviconNotif();
 if(isAdmin||isOwner){$('adminPanel').classList.toggle('show');updSelects();send({type:'adminGetBanList'})}
+};
+
+$('notifToggle').onclick=(e)=>{
+e.stopPropagation();
+notificationsEnabled=!notificationsEnabled;
+$('notifToggle').classList.toggle('active',notificationsEnabled);
+$('notifToggle').textContent=notificationsEnabled?'🔔':'🔕';
+localStorage.setItem('notificationsEnabled',notificationsEnabled);
+notify(notificationsEnabled?'🔔 Enabled':'🔕 Disabled',`Notifications ${notificationsEnabled?'enabled':'disabled'}`);
 };
 
 $('closeAdmin').onclick=()=>$('adminPanel').classList.remove('show');
@@ -957,8 +967,6 @@ $('refreshBans').onclick=()=>send({type:'adminGetBanList'});
 $('applySlowMode').onclick=()=>send({type:'adminSlowMode',enabled:$('slowEnabled').checked,duration:parseInt($('slowDur').value)||5});
 
 $('clearChatBtn').onclick=()=>{if(confirm('Clear chat?'))send({type:'adminClearChat',channel:$('clearChan').value})};
-
-$('ownerAnnounceBtn').onclick=()=>{const t=$('ownerAnnounce').value;if(t){send({type:'ownerAnnouncement',text:t});$('ownerAnnounce').value=''}};
 
 document.onclick=e=>{if(!e.target.closest('.emoji-picker')&&!e.target.closest('.msg-action'))document.querySelectorAll('.emoji-picker').forEach(p=>p.classList.remove('show'))};
 
