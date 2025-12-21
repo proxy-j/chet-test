@@ -24,7 +24,6 @@ const wss = new WebSocket.Server({ server });
 const users = new Map();
 const connections = new Map();
 const channels = {
-  announcements: [],
   general: [],
   gaming: [],
   memes: []
