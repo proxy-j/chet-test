@@ -581,15 +581,22 @@ if(d.isOwner){isOwner=true;$('badgeOwner').classList.add('show');$('ownerTab').s
 message:()=>{
 if(!messages[d.message.channel])messages[d.message.channel]=[];
 messages[d.message.channel].push(d.message);
-if(d.message.channel===curChan&&chatType==='channel'){
+if(d.message.channel===curChan&&chatType==='channel'&&isTabVisible){
 render();
 }else{
+if(d.message.channel!==curChan||chatType!=='channel'){
 unreadChannels[d.message.channel]=(unreadChannels[d.message.channel]||0)+1;
 updateUnreadBadge(d.message.channel);
+}
+if(!isTabVisible||d.message.channel!==curChan||chatType!=='channel'){
 showFaviconNotif();
 const preview=d.message.imageUrl?'[Image]':d.message.text.slice(0,50);
 notify('💬 New Message',`#${d.message.channel}: ${d.message.author}: ${preview}`);
 showBrowserNotif(`New message in #${d.message.channel}`,`${d.message.author}: ${preview}`);
+}
+if(d.message.channel===curChan&&chatType==='channel'&&!isTabVisible){
+render();
+}
 }
 },
 history:()=>{messages[d.channel]=d.messages;if(d.channel===curChan&&chatType==='channel')render()},
