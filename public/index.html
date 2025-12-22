@@ -32,6 +32,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;h
 .close-dm{opacity:0;background:none;border:none;color:#96989d;cursor:pointer;font-size:16px;transition:opacity .2s}
 .channel:hover .close-dm{opacity:1}
 .close-dm:hover{color:#ed4245}
+.voice-section{margin-top:16px;padding-top:16px;border-top:1px solid #202225}
+.voice-channel{padding:8px 12px;margin:2px 0;border-radius:4px;color:#96989d;cursor:pointer;display:flex;align-items:center;justify-content:space-between;font-size:14px;transition:all .15s}
+.voice-channel:hover{background:#3a3c42;color:#dcddde}
+.voice-channel.active{background:#404249;color:#fff}
+.voice-channel-name{display:flex;align-items:center}
+.voice-channel-name::before{content:'🔊';margin-right:6px}
+.voice-status{font-size:11px;color:#3ba55d}
+.voice-controls{display:flex;gap:4px;margin-top:8px}
+.voice-btn{flex:1;padding:6px;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;transition:all .2s;color:#fff}
+.voice-btn.join{background:#3ba55d}
+.voice-btn.join:hover{background:#2d8659}
+.voice-btn.leave{background:#ed4245}
+.voice-btn.leave:hover{background:#c93b3e}
+.voice-btn.mute{background:#5865f2}
+.voice-btn.mute:hover{background:#4752c4}
+.voice-btn.mute.active{background:#faa61a}
+.voice-participants{margin-top:8px;display:none}
+.voice-participants.show{display:block}
+.voice-participant{padding:4px 8px;font-size:12px;color:#dcddde;display:flex;align-items:center;gap:6px}
+.voice-participant::before{content:'👤';font-size:10px}
+.voice-participant.speaking::before{content:'🎤';animation:pulse 1s infinite}
 .users-section{flex:1;overflow-y:auto;padding:8px}
 .users-section-header{padding:8px 12px;color:#96989d;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
 .online-count{color:#3ba55d;font-size:11px}
@@ -386,6 +407,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;h
 <div class="section-header">Direct Messages</div>
 <div id="dmList"></div>
 </div>
+<div class="voice-section">
+<div class="section-header">Voice Channels</div>
+<div class="voice-channel" id="voiceChannel">
+<span class="voice-channel-name">voice channel</span>
+<span class="voice-status" id="voiceStatus">0 users</span>
+</div>
+<div class="voice-controls" id="voiceControls" style="display:none">
+<button class="voice-btn join" id="joinVoice">Join</button>
+<button class="voice-btn mute" id="muteVoice">🎤 Mute</button>
+<button class="voice-btn leave" id="leaveVoice">Leave</button>
+</div>
+<div class="voice-participants" id="voiceParticipants"></div>
+</div>
 </div>
 <div class="user-area" id="userArea">
 <div class="user-avatar" id="myAvatar">U
@@ -448,6 +482,7 @@ let curChan='general',chatType='channel',curDM=null,replyTo=null;
 const messages={},dmMessages={},dmPartners={},users=[],unreadChannels={},unreadDMs={};
 const $=id=>document.getElementById(id);
 let hasUnread=false,isTabVisible=true,selectedBanType='ip',selectedImage=null,notifPermission=false,notificationsEnabled=true;
+let inVoiceChannel=false,localStream=null,isMuted=false,peerConnections={},voiceUsers=[];
 
 document.addEventListener('visibilitychange',()=>{isTabVisible=!document.hidden;if(isTabVisible){clearFaviconNotif()}});
 
@@ -661,7 +696,12 @@ matrix:()=>{document.body.style.cssText='background:#000!important';setTimeout((
 emojiSpam:()=>{for(let i=0;i<20;i++)setTimeout(()=>{const e=document.createElement('div');e.textContent=['😂','🔥','💀','🎉'][Math.floor(Math.random()*4)];e.style.cssText=`position:fixed;font-size:48px;left:${Math.random()*100}vw;top:${Math.random()*100}vh;pointer-events:none;z-index:9999`;document.body.appendChild(e);setTimeout(()=>e.remove(),2000)},i*100)},
 confetti:()=>{const cols=['#ff0','#f0f','#0ff','#f00','#0f0'];for(let i=0;i<50;i++)setTimeout(()=>{const c=document.createElement('div');c.className='confetti';c.style.cssText=`left:${Math.random()*100}%;top:-10px;background:${cols[Math.floor(Math.random()*5)]}`;document.body.appendChild(c);setTimeout(()=>c.remove(),3000)},i*40)},
 rickRoll:()=>window.open('https://www.youtube.com/watch?v=dQw4w9WgXcQ','_blank'),
-forceDisconnect:()=>{alert('Disconnected by admin');ws.close()}
+forceDisconnect:()=>{alert('Disconnected by admin');ws.close()},
+voiceUsers:()=>{voiceUsers=d.users;updateVoiceUI()},
+voiceOffer:d=>handleVoiceOffer(d),
+voiceAnswer:d=>handleVoiceAnswer(d),
+voiceIceCandidate:d=>handleIceCandidate(d),
+voiceUserLeft:d=>handleVoiceUserLeft(d)
 };
 if(h[d.type])h[d.type]();
 }
@@ -836,6 +876,123 @@ $('helpContent').innerHTML=html;
 $('helpModal').classList.add('show');
 }
 
+// Voice channel functions
+function updateVoiceUI(){
+$('voiceStatus').textContent=`${voiceUsers.length} user${voiceUsers.length!==1?'s':''}`;
+const participantsDiv=$('voiceParticipants');
+if(voiceUsers.length>0){
+participantsDiv.classList.add('show');
+participantsDiv.innerHTML=voiceUsers.map(u=>`<div class="voice-participant">${u}</div>`).join('');
+}else{
+participantsDiv.classList.remove('show');
+}
+}
+
+async function joinVoiceChannel(){
+try{
+localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+inVoiceChannel=true;
+$('voiceControls').style.display='flex';
+$('voiceChannel').classList.add('active');
+send({type:'joinVoice',username});
+notify('🔊','Joined voice channel');
+
+// Create peer connections for existing users
+voiceUsers.forEach(user=>{
+if(user!==username)createPeerConnection(user,true);
+});
+}catch(e){
+console.error('Microphone error:',e);
+notify('❌','Could not access microphone');
+}
+}
+
+function leaveVoiceChannel(){
+if(localStream){
+localStream.getTracks().forEach(track=>track.stop());
+localStream=null;
+}
+Object.values(peerConnections).forEach(pc=>pc.close());
+peerConnections={};
+inVoiceChannel=false;
+isMuted=false;
+$('voiceControls').style.display='none';
+$('voiceChannel').classList.remove('active');
+$('muteVoice').classList.remove('active');
+$('muteVoice').textContent='🎤 Mute';
+send({type:'leaveVoice'});
+notify('🔇','Left voice channel');
+}
+
+function toggleMute(){
+if(!localStream)return;
+isMuted=!isMuted;
+localStream.getAudioTracks().forEach(track=>track.enabled=!isMuted);
+$('muteVoice').classList.toggle('active',isMuted);
+$('muteVoice').textContent=isMuted?'🔇 Unmute':'🎤 Mute';
+}
+
+function createPeerConnection(remoteUser,isInitiator){
+const config={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+const pc=new RTCPeerConnection(config);
+peerConnections[remoteUser]=pc;
+
+if(localStream){
+localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
+}
+
+pc.ontrack=e=>{
+const audio=new Audio();
+audio.srcObject=e.streams[0];
+audio.play().catch(err=>console.error('Audio play error:',err));
+};
+
+pc.onicecandidate=e=>{
+if(e.candidate){
+send({type:'voiceIceCandidate',to:remoteUser,candidate:e.candidate});
+}
+};
+
+if(isInitiator){
+pc.createOffer().then(offer=>{
+pc.setLocalDescription(offer);
+send({type:'voiceOffer',to:remoteUser,offer});
+});
+}
+
+return pc;
+}
+
+async function handleVoiceOffer(data){
+const pc=createPeerConnection(data.from,false);
+await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+const answer=await pc.createAnswer();
+await pc.setLocalDescription(answer);
+send({type:'voiceAnswer',to:data.from,answer});
+}
+
+async function handleVoiceAnswer(data){
+const pc=peerConnections[data.from];
+if(pc){
+await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+}
+}
+
+function handleIceCandidate(data){
+const pc=peerConnections[data.from];
+if(pc){
+pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+}
+}
+
+function handleVoiceUserLeft(data){
+const pc=peerConnections[data.username];
+if(pc){
+pc.close();
+delete peerConnections[data.username];
+}
+}
+
 document.addEventListener('DOMContentLoaded',()=>{
 $('loginBtn').onclick=tryLogin;
 $('guestLogin').onclick=()=>{tryLogin('classic')};
@@ -909,6 +1066,10 @@ $('notifToggle').textContent=notificationsEnabled?'🔔':'🔕';
 localStorage.setItem('notificationsEnabled',notificationsEnabled);
 notify(notificationsEnabled?'🔔 Enabled':'🔕 Disabled',`Notifications ${notificationsEnabled?'enabled':'disabled'}`);
 };
+
+$('joinVoice').onclick=joinVoiceChannel;
+$('leaveVoice').onclick=leaveVoiceChannel;
+$('muteVoice').onclick=toggleMute;
 
 $('closeAdmin').onclick=()=>$('adminPanel').classList.remove('show');
 
