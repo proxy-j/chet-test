@@ -35,7 +35,11 @@ const bannedIPs = new Set();
 const userWarnings = new Map();
 const slowMode = { enabled: false, duration: 5 };
 const messageTimestamps = new Map();
-const voiceChannelUsers = new Set();
+const voiceChannels = {
+  general: new Set(),
+  chill: new Set(),
+  gaming: new Set()
+};
 
 // Passwords
 const PASSWORDS = {
@@ -134,18 +138,22 @@ wss.on('connection', (ws, req) => {
     if (user) {
       console.log(`User disconnected: ${user.username}`);
       
-      // Remove from voice channel if they were in it
-      if (voiceChannelUsers.has(user.username)) {
-        voiceChannelUsers.delete(user.username);
-        broadcast({
-          type: 'voiceUserLeft',
-          username: user.username
-        });
-        broadcast({
-          type: 'voiceUsers',
-          users: Array.from(voiceChannelUsers)
-        });
-      }
+      // Remove from all voice channels
+      Object.keys(voiceChannels).forEach(channel => {
+        if (voiceChannels[channel].has(user.username)) {
+          voiceChannels[channel].delete(user.username);
+          broadcast({
+            type: 'voiceUserLeft',
+            username: user.username,
+            channel
+          });
+          broadcast({
+            type: 'voiceUsers',
+            users: Array.from(voiceChannels[channel]),
+            channel
+          });
+        }
+      });
       
       connections.delete(ws);
       broadcast({ type: 'userList', users: getUserList() });
@@ -535,35 +543,44 @@ function handleJoinVoice(ws, data) {
   const user = connections.get(ws);
   if (!user) return;
 
-  voiceChannelUsers.add(user.username);
+  const channel = data.channel || 'general';
+  if (!voiceChannels[channel]) return;
+
+  voiceChannels[channel].add(user.username);
   
   // Notify all users of updated voice channel
   broadcast({
     type: 'voiceUsers',
-    users: Array.from(voiceChannelUsers)
+    users: Array.from(voiceChannels[channel]),
+    channel
   });
   
-  console.log(`${user.username} joined voice channel`);
+  console.log(`${user.username} joined voice channel: ${channel}`);
 }
 
-function handleLeaveVoice(ws) {
+function handleLeaveVoice(ws, data) {
   const user = connections.get(ws);
   if (!user) return;
 
-  voiceChannelUsers.delete(user.username);
+  const channel = data.channel || 'general';
+  if (!voiceChannels[channel]) return;
+
+  voiceChannels[channel].delete(user.username);
   
   // Notify all users
   broadcast({
     type: 'voiceUserLeft',
-    username: user.username
+    username: user.username,
+    channel
   });
   
   broadcast({
     type: 'voiceUsers',
-    users: Array.from(voiceChannelUsers)
+    users: Array.from(voiceChannels[channel]),
+    channel
   });
   
-  console.log(`${user.username} left voice channel`);
+  console.log(`${user.username} left voice channel: ${channel}`);
 }
 
 function handleVoiceOffer(ws, data) {
@@ -575,7 +592,8 @@ function handleVoiceOffer(ws, data) {
     target.ws.send(JSON.stringify({
       type: 'voiceOffer',
       from: user.username,
-      offer: data.offer
+      offer: data.offer,
+      channel: data.channel
     }));
   }
 }
@@ -589,7 +607,8 @@ function handleVoiceAnswer(ws, data) {
     target.ws.send(JSON.stringify({
       type: 'voiceAnswer',
       from: user.username,
-      answer: data.answer
+      answer: data.answer,
+      channel: data.channel
     }));
   }
 }
