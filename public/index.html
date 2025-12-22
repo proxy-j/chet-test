@@ -878,6 +878,7 @@ $('helpModal').classList.add('show');
 
 // Voice channel functions
 function updateVoiceUI(){
+console.log('Updating voice UI, users:', voiceUsers);
 $('voiceStatus').textContent=`${voiceUsers.length} user${voiceUsers.length!==1?'s':''}`;
 const participantsDiv=$('voiceParticipants');
 if(voiceUsers.length>0){
@@ -889,28 +890,37 @@ participantsDiv.classList.remove('show');
 }
 
 async function joinVoiceChannel(){
+console.log('Attempting to join voice channel...');
 try{
+console.log('Requesting microphone access...');
 localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+console.log('Microphone access granted');
 inVoiceChannel=true;
 $('voiceControls').style.display='flex';
 $('voiceChannel').classList.add('active');
+console.log('Sending joinVoice message');
 send({type:'joinVoice',username});
 notify('🔊','Joined voice channel');
 
 // Create peer connections for existing users
 voiceUsers.forEach(user=>{
-if(user!==username)createPeerConnection(user,true);
+if(user!==username){
+console.log('Creating peer connection for:', user);
+createPeerConnection(user,true);
+}
 });
 }catch(e){
 console.error('Microphone error:',e);
-notify('❌','Could not access microphone');
+notify('❌','Could not access microphone: '+e.message);
 }
 }
 
 function leaveVoiceChannel(){
+console.log('Leaving voice channel...');
 if(localStream){
 localStream.getTracks().forEach(track=>track.stop());
 localStream=null;
+console.log('Stopped local stream');
 }
 Object.values(peerConnections).forEach(pc=>pc.close());
 peerConnections={};
@@ -922,26 +932,39 @@ $('muteVoice').classList.remove('active');
 $('muteVoice').textContent='🎤 Mute';
 send({type:'leaveVoice'});
 notify('🔇','Left voice channel');
+console.log('Left voice channel');
 }
 
 function toggleMute(){
-if(!localStream)return;
+console.log('Toggle mute, current state:', isMuted);
+if(!localStream){
+console.log('No local stream');
+return;
+}
 isMuted=!isMuted;
-localStream.getAudioTracks().forEach(track=>track.enabled=!isMuted);
+localStream.getAudioTracks().forEach(track=>{
+track.enabled=!isMuted;
+console.log('Track enabled:', track.enabled);
+});
 $('muteVoice').classList.toggle('active',isMuted);
 $('muteVoice').textContent=isMuted?'🔇 Unmute':'🎤 Mute';
 }
 
 function createPeerConnection(remoteUser,isInitiator){
+console.log('Creating peer connection with:', remoteUser, 'isInitiator:', isInitiator);
 const config={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
 const pc=new RTCPeerConnection(config);
 peerConnections[remoteUser]=pc;
 
 if(localStream){
-localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
+localStream.getTracks().forEach(track=>{
+pc.addTrack(track,localStream);
+console.log('Added local track to peer connection');
+});
 }
 
 pc.ontrack=e=>{
+console.log('Received remote track from:', remoteUser);
 const audio=new Audio();
 audio.srcObject=e.streams[0];
 audio.play().catch(err=>console.error('Audio play error:',err));
@@ -949,29 +972,39 @@ audio.play().catch(err=>console.error('Audio play error:',err));
 
 pc.onicecandidate=e=>{
 if(e.candidate){
+console.log('Sending ICE candidate to:', remoteUser);
 send({type:'voiceIceCandidate',to:remoteUser,candidate:e.candidate});
 }
 };
 
+pc.onconnectionstatechange=()=>{
+console.log('Connection state with', remoteUser, ':', pc.connectionState);
+};
+
 if(isInitiator){
+console.log('Creating offer for:', remoteUser);
 pc.createOffer().then(offer=>{
 pc.setLocalDescription(offer);
+console.log('Sending offer to:', remoteUser);
 send({type:'voiceOffer',to:remoteUser,offer});
-});
+}).catch(err=>console.error('Offer creation error:',err));
 }
 
 return pc;
 }
 
 async function handleVoiceOffer(data){
+console.log('Received voice offer from:', data.from);
 const pc=createPeerConnection(data.from,false);
 await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
 const answer=await pc.createAnswer();
 await pc.setLocalDescription(answer);
+console.log('Sending answer to:', data.from);
 send({type:'voiceAnswer',to:data.from,answer});
 }
 
 async function handleVoiceAnswer(data){
+console.log('Received voice answer from:', data.from);
 const pc=peerConnections[data.from];
 if(pc){
 await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
@@ -979,13 +1012,15 @@ await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
 }
 
 function handleIceCandidate(data){
+console.log('Received ICE candidate from:', data.from);
 const pc=peerConnections[data.from];
 if(pc){
-pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(err=>console.error('ICE error:',err));
 }
 }
 
 function handleVoiceUserLeft(data){
+console.log('User left voice channel:', data.username);
 const pc=peerConnections[data.username];
 if(pc){
 pc.close();
@@ -1067,9 +1102,7 @@ localStorage.setItem('notificationsEnabled',notificationsEnabled);
 notify(notificationsEnabled?'🔔 Enabled':'🔕 Disabled',`Notifications ${notificationsEnabled?'enabled':'disabled'}`);
 };
 
-$('joinVoice').onclick=joinVoiceChannel;
-$('leaveVoice').onclick=leaveVoiceChannel;
-$('muteVoice').onclick=toggleMute;
+$('closeAdmin').onclick=()=>$('adminPanel').classList.remove('show');
 
 $('closeAdmin').onclick=()=>$('adminPanel').classList.remove('show');
 
@@ -1132,6 +1165,32 @@ $('clearChatBtn').onclick=()=>{if(confirm('Clear chat?'))send({type:'adminClearC
 document.onclick=e=>{if(!e.target.closest('.emoji-picker')&&!e.target.closest('.msg-action'))document.querySelectorAll('.emoji-picker').forEach(p=>p.classList.remove('show'))};
 
 $('helpModal').onclick=e=>{if(e.target===$('helpModal'))$('helpModal').classList.remove('show')};
+
+// Voice channel button handlers
+$('voiceChannel').onclick=()=>{
+console.log('Voice channel clicked');
+if(!inVoiceChannel){
+joinVoiceChannel();
+}
+};
+
+$('joinVoice').onclick=(e)=>{
+e.stopPropagation();
+console.log('Join button clicked');
+joinVoiceChannel();
+};
+
+$('leaveVoice').onclick=(e)=>{
+e.stopPropagation();
+console.log('Leave button clicked');
+leaveVoiceChannel();
+};
+
+$('muteVoice').onclick=(e)=>{
+e.stopPropagation();
+console.log('Mute button clicked');
+toggleMute();
+};
 });
 </script>
 </body>
