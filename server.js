@@ -35,6 +35,7 @@ const bannedIPs = new Set();
 const userWarnings = new Map();
 const slowMode = { enabled: false, duration: 5 };
 const messageTimestamps = new Map();
+const voiceChannelUsers = new Set();
 
 // Passwords
 const PASSWORDS = {
@@ -132,6 +133,20 @@ wss.on('connection', (ws, req) => {
     const user = connections.get(ws);
     if (user) {
       console.log(`User disconnected: ${user.username}`);
+      
+      // Remove from voice channel if they were in it
+      if (voiceChannelUsers.has(user.username)) {
+        voiceChannelUsers.delete(user.username);
+        broadcast({
+          type: 'voiceUserLeft',
+          username: user.username
+        });
+        broadcast({
+          type: 'voiceUsers',
+          users: Array.from(voiceChannelUsers)
+        });
+      }
+      
       connections.delete(ws);
       broadcast({ type: 'userList', users: getUserList() });
     }
@@ -155,6 +170,13 @@ function handleMessage(ws, data, clientIP) {
     removeReaction: handleRemoveReaction,
     typing: handleTyping,
     
+    // Voice channel
+    joinVoice: handleJoinVoice,
+    leaveVoice: handleLeaveVoice,
+    voiceOffer: handleVoiceOffer,
+    voiceAnswer: handleVoiceAnswer,
+    voiceIceCandidate: handleVoiceIceCandidate,
+    
     // Admin commands
     adminKick: handleAdminKick,
     adminTimeout: handleAdminTimeout,
@@ -168,8 +190,6 @@ function handleMessage(ws, data, clientIP) {
     adminBroadcast: handleAdminBroadcast,
     adminSlowMode: handleAdminSlowMode,
     adminClearChat: handleAdminClearChat,
-    
-    // Admin troll commands
     adminSpinScreen: (ws, data) => handleAdminEffect(ws, data, 'spinScreen'),
     adminShakeScreen: (ws, data) => handleAdminEffect(ws, data, 'shakeScreen'),
     adminFlipScreen: (ws, data) => handleAdminEffect(ws, data, 'flipScreen'),
@@ -180,10 +200,7 @@ function handleMessage(ws, data, clientIP) {
     adminEmojiSpam: (ws, data) => handleAdminEffect(ws, data, 'emojiSpam'),
     adminConfetti: handleAdminConfettiAll,
     adminRickRoll: (ws, data) => handleAdminEffect(ws, data, 'rickRoll'),
-    adminForceDisconnect: handleAdminForceDisconnect,
-    
-    // Owner commands
-    ownerAnnouncement: handleOwnerAnnouncement
+    adminForceDisconnect: handleAdminForceDisconnect
   };
 
   const handler = handlers[data.type];
@@ -513,6 +530,84 @@ function handleTyping(ws, data) {
   }, ws);
 }
 
+// Voice channel handlers
+function handleJoinVoice(ws, data) {
+  const user = connections.get(ws);
+  if (!user) return;
+
+  voiceChannelUsers.add(user.username);
+  
+  // Notify all users of updated voice channel
+  broadcast({
+    type: 'voiceUsers',
+    users: Array.from(voiceChannelUsers)
+  });
+  
+  console.log(`${user.username} joined voice channel`);
+}
+
+function handleLeaveVoice(ws) {
+  const user = connections.get(ws);
+  if (!user) return;
+
+  voiceChannelUsers.delete(user.username);
+  
+  // Notify all users
+  broadcast({
+    type: 'voiceUserLeft',
+    username: user.username
+  });
+  
+  broadcast({
+    type: 'voiceUsers',
+    users: Array.from(voiceChannelUsers)
+  });
+  
+  console.log(`${user.username} left voice channel`);
+}
+
+function handleVoiceOffer(ws, data) {
+  const user = connections.get(ws);
+  if (!user) return;
+
+  const target = getOnlineUserByUsername(data.to);
+  if (target) {
+    target.ws.send(JSON.stringify({
+      type: 'voiceOffer',
+      from: user.username,
+      offer: data.offer
+    }));
+  }
+}
+
+function handleVoiceAnswer(ws, data) {
+  const user = connections.get(ws);
+  if (!user) return;
+
+  const target = getOnlineUserByUsername(data.to);
+  if (target) {
+    target.ws.send(JSON.stringify({
+      type: 'voiceAnswer',
+      from: user.username,
+      answer: data.answer
+    }));
+  }
+}
+
+function handleVoiceIceCandidate(ws, data) {
+  const user = connections.get(ws);
+  if (!user) return;
+
+  const target = getOnlineUserByUsername(data.to);
+  if (target) {
+    target.ws.send(JSON.stringify({
+      type: 'voiceIceCandidate',
+      from: user.username,
+      candidate: data.candidate
+    }));
+  }
+}
+
 // Admin command handlers
 function handleAdminKick(ws, data) {
   const admin = connections.get(ws);
@@ -813,33 +908,6 @@ function handleAdminForceDisconnect(ws, data) {
   ws.send(JSON.stringify({
     type: 'adminActionSuccess',
     message: `Disconnected ${data.targetUsername}`
-  }));
-}
-
-function handleOwnerAnnouncement(ws, data) {
-  const owner = connections.get(ws);
-  if (!owner || !owner.isOwner) return;
-
-  const message = {
-    id: generateId(),
-    author: 'ANNOUNCEMENT',
-    text: data.text,
-    channel: 'announcements',
-    timestamp: Date.now(),
-    isSystem: true,
-    reactions: {}
-  };
-
-  channels.announcements.push(message);
-
-  broadcast({
-    type: 'announcement',
-    message
-  });
-
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: 'Announcement posted'
   }));
 }
 
