@@ -86,6 +86,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;h
 .notif-toggle{background:none;border:none;color:#96989d;cursor:pointer;font-size:20px;padding:4px;border-radius:4px;transition:all .2s;display:flex;align-items:center;justify-content:center}
 .notif-toggle:hover{background:#3a3c42;color:#fff}
 .notif-toggle.active{color:#3ba55d}
+.settings-btn{background:none;border:none;color:#96989d;cursor:pointer;font-size:20px;padding:4px;border-radius:4px;transition:all .2s;display:flex;align-items:center;justify-content:center}
+.settings-btn:hover{background:#3a3c42;color:#fff}
+#settingsPanel{position:fixed;bottom:60px;left:8px;width:400px;max-height:500px;background:#2f3136;border:1px solid #202225;border-radius:8px;display:none;flex-direction:column;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.5);overflow:hidden}
+#settingsPanel.show{display:flex}
+.settings-header{padding:12px 16px;border-bottom:1px solid #202225;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.settings-title{color:#fff;font-weight:600;font-size:14px}
+.settings-close{background:none;border:none;color:#96989d;cursor:pointer;font-size:20px;transition:color .2s}
+.settings-close:hover{color:#fff}
+.settings-content{flex:1;overflow-y:auto;padding:12px;min-height:0}
 .main-content{flex:1;display:flex;flex-direction:column;background:#36393f}
 .chat-header{height:48px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #202225;color:#fff}
 .current-channel{font-weight:600;font-size:16px}
@@ -104,11 +113,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;h
 .msg-author.normal{color:#fff}
 .msg-time{color:#72767d;font-size:12px}
 .msg-text{color:#dcddde;font-size:15px;line-height:1.4;word-wrap:break-word;white-space:pre-wrap}
-.msg-text-line{margin-top:0}
-.message.grouped{margin-top:0;padding-top:0;margin-bottom:0}
-.message.grouped .msg-avatar,.message.grouped .msg-header{display:none}
-.message.grouped .msg-content{margin-left:56px}
-.message.grouped .msg-actions,.message.grouped .emoji-picker{display:none!important}
 .msg-image{max-width:400px;max-height:300px;border-radius:8px;margin-top:8px;cursor:pointer;transition:transform .2s}
 .msg-image:hover{transform:scale(1.02)}
 .msg-reply{background:#2f3136;border-left:3px solid #5865f2;padding:4px 8px;margin-bottom:4px;border-radius:0 4px 4px 0;font-size:13px;color:#96989d}
@@ -278,6 +282,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;h
 
 <div class="image-modal" id="imageModal">
 <img src="" alt="Full size image">
+</div>
+
+<div id="settingsPanel">
+<div class="settings-header">
+<div class="settings-title">⚙️ Settings</div>
+<button class="settings-close" id="closeSettings">×</button>
+</div>
+<div class="settings-content">
+<p style="color:#96989d;font-size:13px">Settings options coming soon...</p>
+</div>
 </div>
 
 <div id="adminPanel">
@@ -461,6 +475,7 @@ gaming
 </div>
 <div class="user-display-name" id="myName">User</div>
 <button class="notif-toggle active" id="notifToggle" title="Toggle notifications">🔔</button>
+<button class="settings-btn" id="settingsBtn" title="Settings">⚙️</button>
 <div class="conn-status" id="connStatus"></div>
 </div>
 </div>
@@ -666,19 +681,6 @@ render();
 }
 },
 history:()=>{messages[d.channel]=d.messages;if(d.channel===curChan&&chatType==='channel')render()},
-messageUpdate:()=>{
-const arr=d.message.chatId?dmMessages[d.message.chatId]:messages[d.message.channel];
-if(arr){
-const msg=arr.find(m=>m.id===d.message.id);
-if(msg){
-msg.text=d.message.text;
-msg.timestamp=d.message.timestamp;
-if((d.message.chatId&&d.message.chatId===curDM&&chatType==='dm')||(d.message.channel===curChan&&chatType==='channel')){
-render();
-}
-}
-}
-},
 userList:()=>{users.length=0;users.push(...d.users);updUsers()},
 typing:()=>{if((d.isPrivate&&dmPartners[curDM]===d.username)||(!d.isPrivate&&d.channel===curChan)){$('typingInd').textContent=d.isTyping?`${d.username} is typing...`:''}},
 privateChatRequest:()=>{
@@ -862,7 +864,7 @@ modal.classList.add('show');
 
 function render(){
 const arr=chatType==='dm'?dmMessages[curDM]||[]:messages[curChan]||[];
-$('msgArea').innerHTML=arr.map((m,i)=>{
+$('msgArea').innerHTML=arr.map(m=>{
 const authorClass=m.isOwner?'owner':m.isAdmin?'admin':m.isVIP?'vip':'normal';
 const badge=m.isOwner?'<span class="role-badge owner">OWNER</span>':m.isAdmin?'<span class="role-badge admin">ADMIN</span>':m.isVIP?'<span class="role-badge vip">VIP</span>':'';
 const replyHtml=m.replyTo?`<div class="msg-reply"><span class="msg-reply-author">↩ ${m.replyTo.author}:</span> ${m.replyTo.text}</div>`:'';
@@ -872,7 +874,6 @@ if(m.reactions&&Object.keys(m.reactions).length){
 reactHtml='<div class="reactions">'+Object.entries(m.reactions).map(([e,u])=>`<div class="reaction${u.includes(username)?' active':''}" onclick="${u.includes(username)?'remReact':'addReact'}('${m.id}','${e}')">${e}<span class="reaction-count">${u.length}</span></div>`).join('')+'</div>';
 }
 const adminBtns=(isAdmin||isOwner)&&!m.isSystem?`<button class="msg-action" onclick="send({type:'adminDeleteMessage',messageId:'${m.id}',channel:'${m.channel||curChan}'})">🗑️</button>`:'';
-
 return `<div class="message" data-id="${m.id}"><div class="msg-avatar">${m.author[0].toUpperCase()}</div><div class="msg-content">${replyHtml}<div class="msg-header"><span class="msg-author ${authorClass}">${m.author}</span>${badge}<span class="msg-time">${new Date(m.timestamp).toLocaleTimeString().slice(0,5)}</span></div><div class="msg-text">${esc(m.text)}</div>${imageHtml}${reactHtml}</div><div class="msg-actions"><button class="msg-action" onclick='setReply(${JSON.stringify({id:m.id,author:m.author,text:m.text.slice(0,50)}).replace(/'/g,"&#39;")})'>↩</button><button class="msg-action" onclick="toggleEmoji('${m.id}')">😀</button>${adminBtns}</div><div class="emoji-picker" id="ep-${m.id}">${EMOJIS.map(e=>`<button onclick="addReact('${m.id}','${e}');toggleEmoji('${m.id}')">${e}</button>`).join('')}</div></div>`;
 }).join('');
 $('msgArea').scrollTop=$('msgArea').scrollHeight;
@@ -1164,6 +1165,13 @@ $('notifToggle').textContent=notificationsEnabled?'🔔':'🔕';
 localStorage.setItem('notificationsEnabled',notificationsEnabled);
 notify(notificationsEnabled?'🔔 Enabled':'🔕 Disabled',`Notifications ${notificationsEnabled?'enabled':'disabled'}`);
 };
+
+$('settingsBtn').onclick=(e)=>{
+e.stopPropagation();
+$('settingsPanel').classList.toggle('show');
+};
+
+$('closeSettings').onclick=()=>$('settingsPanel').classList.remove('show');
 
 $('closeAdmin').onclick=()=>$('adminPanel').classList.remove('show');
 
