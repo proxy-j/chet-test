@@ -698,10 +698,10 @@ confetti:()=>{const cols=['#ff0','#f0f','#0ff','#f00','#0f0'];for(let i=0;i<50;i
 rickRoll:()=>window.open('https://www.youtube.com/watch?v=dQw4w9WgXcQ','_blank'),
 forceDisconnect:()=>{alert('Disconnected by admin');ws.close()},
 voiceUsers:()=>{voiceUsers=d.users;updateVoiceUI()},
-voiceOffer:d=>handleVoiceOffer(d),
-voiceAnswer:d=>handleVoiceAnswer(d),
-voiceIceCandidate:d=>handleIceCandidate(d),
-voiceUserLeft:d=>handleVoiceUserLeft(d)
+voiceOffer:()=>handleVoiceOffer(d),
+voiceAnswer:()=>handleVoiceAnswer(d),
+voiceIceCandidate:()=>handleIceCandidate(d),
+voiceUserLeft:()=>handleVoiceUserLeft(d)
 };
 if(h[d.type])h[d.type]();
 }
