@@ -104,10 +104,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;h
 .msg-author.normal{color:#fff}
 .msg-time{color:#72767d;font-size:12px}
 .msg-text{color:#dcddde;font-size:15px;line-height:1.4;word-wrap:break-word;white-space:pre-wrap}
-.msg-text-line{margin-top:4px}
-.message.grouped{margin-top:0;padding-top:0}
+.msg-text-line{margin-top:0}
+.message.grouped{margin-top:0;padding-top:0;margin-bottom:0}
 .message.grouped .msg-avatar,.message.grouped .msg-header{display:none}
 .message.grouped .msg-content{margin-left:56px}
+.message.grouped .msg-actions,.message.grouped .emoji-picker{display:none!important}
 .msg-image{max-width:400px;max-height:300px;border-radius:8px;margin-top:8px;cursor:pointer;transition:transform .2s}
 .msg-image:hover{transform:scale(1.02)}
 .msg-reply{background:#2f3136;border-left:3px solid #5865f2;padding:4px 8px;margin-bottom:4px;border-radius:0 4px 4px 0;font-size:13px;color:#96989d}
@@ -665,6 +666,19 @@ render();
 }
 },
 history:()=>{messages[d.channel]=d.messages;if(d.channel===curChan&&chatType==='channel')render()},
+messageUpdate:()=>{
+const arr=d.message.chatId?dmMessages[d.message.chatId]:messages[d.message.channel];
+if(arr){
+const msg=arr.find(m=>m.id===d.message.id);
+if(msg){
+msg.text=d.message.text;
+msg.timestamp=d.message.timestamp;
+if((d.message.chatId&&d.message.chatId===curDM&&chatType==='dm')||(d.message.channel===curChan&&chatType==='channel')){
+render();
+}
+}
+}
+},
 userList:()=>{users.length=0;users.push(...d.users);updUsers()},
 typing:()=>{if((d.isPrivate&&dmPartners[curDM]===d.username)||(!d.isPrivate&&d.channel===curChan)){$('typingInd').textContent=d.isTyping?`${d.username} is typing...`:''}},
 privateChatRequest:()=>{
@@ -849,9 +863,6 @@ modal.classList.add('show');
 function render(){
 const arr=chatType==='dm'?dmMessages[curDM]||[]:messages[curChan]||[];
 $('msgArea').innerHTML=arr.map((m,i)=>{
-const prevMsg=i>0?arr[i-1]:null;
-const isGrouped=prevMsg&&prevMsg.author===m.author&&!m.replyTo&&!prevMsg.replyTo&&(m.timestamp-prevMsg.timestamp)<60000;
-
 const authorClass=m.isOwner?'owner':m.isAdmin?'admin':m.isVIP?'vip':'normal';
 const badge=m.isOwner?'<span class="role-badge owner">OWNER</span>':m.isAdmin?'<span class="role-badge admin">ADMIN</span>':m.isVIP?'<span class="role-badge vip">VIP</span>':'';
 const replyHtml=m.replyTo?`<div class="msg-reply"><span class="msg-reply-author">↩ ${m.replyTo.author}:</span> ${m.replyTo.text}</div>`:'';
@@ -861,10 +872,6 @@ if(m.reactions&&Object.keys(m.reactions).length){
 reactHtml='<div class="reactions">'+Object.entries(m.reactions).map(([e,u])=>`<div class="reaction${u.includes(username)?' active':''}" onclick="${u.includes(username)?'remReact':'addReact'}('${m.id}','${e}')">${e}<span class="reaction-count">${u.length}</span></div>`).join('')+'</div>';
 }
 const adminBtns=(isAdmin||isOwner)&&!m.isSystem?`<button class="msg-action" onclick="send({type:'adminDeleteMessage',messageId:'${m.id}',channel:'${m.channel||curChan}'})">🗑️</button>`:'';
-
-if(isGrouped){
-return `<div class="message grouped" data-id="${m.id}"><div class="msg-content"><div class="msg-text">${esc(m.text)}</div>${imageHtml}${reactHtml}</div><div class="msg-actions"><button class="msg-action" onclick='setReply(${JSON.stringify({id:m.id,author:m.author,text:m.text.slice(0,50)}).replace(/'/g,"&#39;")})'>↩</button><button class="msg-action" onclick="toggleEmoji('${m.id}')">😀</button>${adminBtns}</div><div class="emoji-picker" id="ep-${m.id}">${EMOJIS.map(e=>`<button onclick="addReact('${m.id}','${e}');toggleEmoji('${m.id}')">${e}</button>`).join('')}</div></div>`;
-}
 
 return `<div class="message" data-id="${m.id}"><div class="msg-avatar">${m.author[0].toUpperCase()}</div><div class="msg-content">${replyHtml}<div class="msg-header"><span class="msg-author ${authorClass}">${m.author}</span>${badge}<span class="msg-time">${new Date(m.timestamp).toLocaleTimeString().slice(0,5)}</span></div><div class="msg-text">${esc(m.text)}</div>${imageHtml}${reactHtml}</div><div class="msg-actions"><button class="msg-action" onclick='setReply(${JSON.stringify({id:m.id,author:m.author,text:m.text.slice(0,50)}).replace(/'/g,"&#39;")})'>↩</button><button class="msg-action" onclick="toggleEmoji('${m.id}')">😀</button>${adminBtns}</div><div class="emoji-picker" id="ep-${m.id}">${EMOJIS.map(e=>`<button onclick="addReact('${m.id}','${e}');toggleEmoji('${m.id}')">${e}</button>`).join('')}</div></div>`;
 }).join('');
