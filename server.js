@@ -545,6 +545,17 @@ function handleTyping(ws, data) {
   }, ws);
 }
 
+function handleUpdateProfile(ws, data) {
+  const user = connections.get(ws);
+  if (!user) return;
+
+  userProfiles.set(user.username, {
+    profileColor: data.profileColor || 'default'
+  });
+
+  console.log(`${user.username} updated profile color to ${data.profileColor}`);
+}
+
 // Voice channel handlers
 function handleJoinVoice(ws, data) {
   const user = connections.get(ws);
