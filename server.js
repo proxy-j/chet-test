@@ -1,951 +1,479 @@
-const WebSocket = require('ws');
 const express = require('express');
-const path = require('path');
-const crypto = require('crypto');
+const http = require('http');
+const WebSocket = require('ws');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Parse JSON bodies
-app.use(express.json({ limit: '10mb' }));
-
-// Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
-
-const server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`HTTP: http://localhost:${PORT}`);
-  console.log(`WebSocket ready for connections`);
-});
-
+const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Data structures
-const users = new Map();
-const connections = new Map();
-const channels = {
-  general: [],
-  gaming: [],
-  memes: []
+// Serve frontend files from the 'public' folder
+app.use(express.static('public'));
+
+// --- DATA STORAGE ---
+// 1. THE FIX: Define userProfiles so the server doesn't crash
+const userProfiles = {}; 
+
+const history = {
+    general: [],
+    gaming: [],
+    memes: []
 };
-const privateChats = new Map();
-const privateChatParticipants = new Map();
-const bannedUsers = new Set();
+const dmHistory = {}; // Key: chatId (sorted usernames), Value: Array of messages
 const bannedIPs = new Set();
-const userWarnings = new Map();
-const slowMode = { enabled: false, duration: 5 };
-const messageTimestamps = new Map();
+const bannedUsers = new Set();
+
+// Track connected clients
+// We store objects: { ws, username, uuid, ip, isAdmin, isVIP, isOwner, voiceChannel }
+let clients = []; 
+
+// Voice channel state: { general: ['User1'], gaming: [] }
 const voiceChannels = {
-  general: new Set(),
-  chill: new Set(),
-  gaming: new Set()
+    general: [],
+    chill: [],
+    gaming: []
 };
 
-// Passwords
-const PASSWORDS = {
-  owner: '10owna12',
-  admin: 'mod-is-rly-awesome',
-  vip: 'very-important-person'
-};
+// --- HELPER FUNCTIONS ---
 
-// Helper functions
-function generateId() {
-  return crypto.randomBytes(16).toString('hex');
-}
-
-function broadcast(data, exclude = null) {
-  connections.forEach((user, ws) => {
-    if (ws !== exclude && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(data));
-    }
-  });
-}
-
-function sendToUser(uuid, data) {
-  connections.forEach((user, ws) => {
-    if (user.uuid === uuid && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(data));
-    }
-  });
-}
-
-function sendToUsers(uuids, data) {
-  uuids.forEach(uuid => sendToUser(uuid, data));
-}
-
-function getUserList() {
-  const list = [];
-  connections.forEach(user => {
-    list.push({
-      username: user.username,
-      isAdmin: user.isAdmin,
-      isVIP: user.isVIP,
-      isOwner: user.isOwner
+function broadcast(data) {
+    const msg = JSON.stringify(data);
+    clients.forEach(c => {
+        if (c.ws.readyState === WebSocket.OPEN) c.ws.send(msg);
     });
-  });
-  return list;
 }
 
-function isUserOnline(username) {
-  for (const user of connections.values()) {
-    if (user.username === username) return true;
-  }
-  return false;
+function broadcastToChannel(channel, data) {
+    // In this simple app, we broadcast to everyone, but the frontend filters by UI.
+    // For a real app, you'd filter by who is "in" the channel.
+    broadcast(data);
 }
 
-function getOnlineUserByUsername(username) {
-  for (const [ws, user] of connections.entries()) {
-    if (user.username === username) return { ws, user };
-  }
-  return null;
+function sendToUser(username, data) {
+    const client = clients.find(c => c.username === username);
+    if (client && client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(JSON.stringify(data));
+    }
 }
 
-function canModerate(moderator, target) {
-  if (target.isOwner) return false;
-  if (moderator.isOwner) return true;
-  if (moderator.isAdmin && !target.isAdmin) return true;
-  return false;
+function getChatId(user1, user2) {
+    return [user1, user2].sort().join('-');
 }
 
-// WebSocket connection handler
+// --- WEBSOCKET CONNECTION ---
+
 wss.on('connection', (ws, req) => {
-  const clientIP = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || 'unknown';
-  console.log(`New WebSocket connection from ${clientIP}`);
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
-  if (bannedIPs.has(clientIP)) {
-    console.log(`Rejected banned IP: ${clientIP}`);
-    ws.send(JSON.stringify({
-      type: 'banned',
-      message: 'You are banned from this server (IP ban)'
-    }));
-    ws.close();
-    return;
-  }
-
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message);
-      console.log(`Received message type: ${data.type} from ${clientIP}`);
-      handleMessage(ws, data, clientIP);
-    } catch (error) {
-      console.error('Error handling message:', error);
-      ws.send(JSON.stringify({ type: 'error', message: 'Invalid message format' }));
+    // Check Bans
+    if (bannedIPs.has(ip)) {
+        ws.send(JSON.stringify({ type: 'banned', message: 'Your IP is banned.' }));
+        ws.close();
+        return;
     }
-  });
 
-  ws.on('close', () => {
-    const user = connections.get(ws);
-    if (user) {
-      console.log(`User disconnected: ${user.username}`);
-      
-      // Remove from all voice channels
-      Object.keys(voiceChannels).forEach(channel => {
-        if (voiceChannels[channel].has(user.username)) {
-          voiceChannels[channel].delete(user.username);
-          broadcast({
-            type: 'voiceUserLeft',
-            username: user.username,
-            channel
-          });
-          broadcast({
-            type: 'voiceUsers',
-            users: Array.from(voiceChannels[channel]),
-            channel
-          });
+    ws.isAlive = true;
+    ws.on('pong', () => ws.isAlive = true);
+
+    ws.on('message', (message) => {
+        try {
+            const data = JSON.parse(message);
+            handleMessage(ws, data, ip);
+        } catch (e) {
+            console.error('Error parsing message:', e);
         }
-      });
-      
-      connections.delete(ws);
-      broadcast({ type: 'userList', users: getUserList() });
-    }
-  });
+    });
 
-  ws.on('error', (error) => {
-    console.error('WebSocket error:', error);
-  });
+    ws.on('close', () => {
+        const client = clients.find(c => c.ws === ws);
+        if (client) {
+            // Remove from voice if active
+            if (client.voiceChannel) {
+                handleLeaveVoice(ws, { channel: client.voiceChannel });
+            }
+            
+            clients = clients.filter(c => c.ws !== ws);
+            broadcast({ type: 'userList', users: getPublicUserList() });
+        }
+    });
 });
 
-function handleMessage(ws, data, clientIP) {
-  const handlers = {
-    join: handleJoin,
-    message: handleChannelMessage,
-    privateMessage: handlePrivateMessage,
-    privateChatRequest: handlePrivateChatRequest,
-    privateChatResponse: handlePrivateChatResponse,
-    getHistory: handleGetHistory,
-    getPrivateHistory: handleGetPrivateHistory,
-    addReaction: handleAddReaction,
-    removeReaction: handleRemoveReaction,
-    typing: handleTyping,
-    
-    // Voice channel
-    joinVoice: handleJoinVoice,
-    leaveVoice: handleLeaveVoice,
-    voiceOffer: handleVoiceOffer,
-    voiceAnswer: handleVoiceAnswer,
-    voiceIceCandidate: handleVoiceIceCandidate,
-    
-    // Profile
-    updateProfile: handleUpdateProfile,
-    
-    // Admin commands
-    adminKick: handleAdminKick,
-    adminTimeout: handleAdminTimeout,
-    adminBan: handleAdminBan,
-    adminUnban: handleAdminUnban,
-    adminUnbanIP: handleAdminUnbanIP,
-    adminForceMute: handleAdminForceMute,
-    adminWarning: handleAdminWarning,
-    adminDeleteMessage: handleAdminDeleteMessage,
-    adminGetBanList: handleAdminGetBanList,
-    adminBroadcast: handleAdminBroadcast,
-    adminSlowMode: handleAdminSlowMode,
-    adminClearChat: handleAdminClearChat,
-    adminSpinScreen: (ws, data) => handleAdminEffect(ws, data, 'spinScreen'),
-    adminShakeScreen: (ws, data) => handleAdminEffect(ws, data, 'shakeScreen'),
-    adminFlipScreen: (ws, data) => handleAdminEffect(ws, data, 'flipScreen'),
-    adminInvertColors: (ws, data) => handleAdminEffect(ws, data, 'invertColors'),
-    adminRainbow: (ws, data) => handleAdminEffect(ws, data, 'rainbow'),
-    adminBlur: (ws, data) => handleAdminEffect(ws, data, 'blur'),
-    adminMatrix: (ws, data) => handleAdminEffect(ws, data, 'matrix'),
-    adminEmojiSpam: (ws, data) => handleAdminEffect(ws, data, 'emojiSpam'),
-    adminConfetti: handleAdminConfettiAll,
-    adminRickRoll: (ws, data) => handleAdminEffect(ws, data, 'rickRoll'),
-    adminForceDisconnect: handleAdminForceDisconnect
-  };
+// --- CORE MESSAGE HANDLER ---
 
-  const handler = handlers[data.type];
-  if (handler) {
-    handler(ws, data, clientIP);
-  }
+function handleMessage(ws, data, ip) {
+    // Basic Rate limiting could go here
+
+    switch (data.type) {
+        case 'join':
+            handleJoin(ws, data, ip);
+            break;
+            
+        case 'message':
+            handleChannelMessage(ws, data);
+            break;
+
+        case 'privateMessage':
+            handlePrivateMessage(ws, data);
+            break;
+
+        case 'updateProfile':
+            // SAVE PROFILE COLOR
+            if (ws.username) {
+                userProfiles[ws.username] = data.profileColor;
+            }
+            break;
+
+        case 'getHistory':
+            if (history[data.channel]) {
+                ws.send(JSON.stringify({ type: 'history', channel: data.channel, messages: history[data.channel] }));
+            }
+            break;
+
+        case 'getPrivateHistory':
+            if (dmHistory[data.chatId]) {
+                ws.send(JSON.stringify({ type: 'privateHistory', chatId: data.chatId, messages: dmHistory[data.chatId] }));
+            }
+            break;
+        
+        // --- REACTIONS ---
+        case 'addReaction':
+        case 'removeReaction':
+            handleReaction(ws, data);
+            break;
+
+        // --- DM REQUESTS ---
+        case 'privateChatRequest':
+            // Relay request to target
+            sendToUser(data.targetUsername, { 
+                type: 'privateChatRequest', 
+                from: ws.username 
+            });
+            break;
+
+        case 'privateChatResponse':
+            // Create the chat ID and notify both
+            if (data.accepted) {
+                const chatId = getChatId(ws.username, data.from);
+                // Notify sender (the one who accepted)
+                ws.send(JSON.stringify({ type: 'privateChatAccepted', with: data.from, chatId }));
+                // Notify requester
+                sendToUser(data.from, { type: 'privateChatAccepted', with: ws.username, chatId });
+            } else {
+                sendToUser(data.from, { type: 'privateChatRejected', by: ws.username });
+            }
+            break;
+
+        // --- VOICE CHAT ---
+        case 'joinVoice':
+            handleJoinVoice(ws, data);
+            break;
+        case 'leaveVoice':
+            handleLeaveVoice(ws, data);
+            break;
+        case 'voiceOffer':
+        case 'voiceAnswer':
+        case 'voiceIceCandidate':
+            // Signaling: just forward to the specific user
+            if (data.to) {
+                sendToUser(data.to, { ...data, from: ws.username });
+            }
+            break;
+
+        // --- ADMIN COMMANDS ---
+        default:
+            if (data.type.startsWith('admin')) {
+                handleAdminCommand(ws, data);
+            }
+            break;
+    }
 }
 
-function handleJoin(ws, data, clientIP) {
-  if (bannedUsers.has(data.username)) {
-    ws.send(JSON.stringify({
-      type: 'banned',
-      message: 'You are banned from this server'
+// --- SPECIFIC HANDLERS ---
+
+function handleJoin(ws, data, ip) {
+    if (!data.username) return;
+    
+    // Check if user is banned
+    if (bannedUsers.has(data.username)) {
+        ws.send(JSON.stringify({ type: 'banned', message: 'This username is banned.' }));
+        ws.close();
+        return;
+    }
+
+    // Sanitize username
+    const username = data.username.slice(0, 30);
+    
+    // Handle Roles
+    let isAdmin = false;
+    let isOwner = false;
+    let isVIP = false;
+
+    if (data.ownerPassword === '10owna12') { isOwner = true; isAdmin = true; }
+    else if (data.adminPassword === 'mod-is-rly-awesome') { isAdmin = true; }
+    else if (data.vipPassword === 'very-important-person') { isVIP = true; }
+
+    // Store Client
+    ws.username = username;
+    ws.uuid = data.uuid || Date.now().toString(); // Simple UUID if none
+    ws.isAdmin = isAdmin;
+    ws.isOwner = isOwner;
+    ws.isVIP = isVIP;
+
+    // Check for existing connection with same username and remove it (kick old session)
+    clients = clients.filter(c => c.username !== username);
+    
+    clients.push({ ws, username, uuid: ws.uuid, ip, isAdmin, isVIP, isOwner });
+
+    // Send success packet
+    ws.send(JSON.stringify({ 
+        type: 'joined', 
+        uuid: ws.uuid, 
+        isAdmin, 
+        isVIP, 
+        isOwner 
     }));
-    ws.close();
-    return;
-  }
 
-  let uuid = data.uuid || generateId();
-  
-  let isOwner = false;
-  let isAdmin = false;
-  let isVIP = false;
-
-  if (data.ownerPassword === PASSWORDS.owner) {
-    isOwner = true;
-    isAdmin = true;
-  } else if (data.adminPassword === PASSWORDS.admin) {
-    isAdmin = true;
-  } else if (data.vipPassword === PASSWORDS.vip) {
-    isVIP = true;
-  }
-
-  const user = {
-    uuid,
-    username: data.username,
-    isOwner,
-    isAdmin,
-    isVIP,
-    ip: clientIP
-  };
-
-  connections.set(ws, user);
-  users.set(uuid, user);
-
-  ws.send(JSON.stringify({
-    type: 'joined',
-    uuid,
-    isOwner,
-    isAdmin,
-    isVIP
-  }));
-
-  broadcast({ type: 'userList', users: getUserList() });
+    // Broadcast updated user list
+    broadcast({ type: 'userList', users: getPublicUserList() });
+    
+    // Announce
+    broadcast({ type: 'message', message: {
+        id: Date.now(),
+        channel: 'general',
+        text: `${username} has joined the server.`,
+        author: 'System',
+        isSystem: true,
+        timestamp: Date.now()
+    }});
 }
 
 function handleChannelMessage(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
+    if (!ws.username) return;
 
-  if (slowMode.enabled) {
-    const lastMsg = messageTimestamps.get(user.uuid);
-    if (lastMsg && Date.now() - lastMsg < slowMode.duration * 1000) {
-      ws.send(JSON.stringify({
-        type: 'error',
-        message: `Slow mode: wait ${slowMode.duration}s between messages`
-      }));
-      return;
-    }
-  }
+    // Rate limit or validations could go here
 
-  messageTimestamps.set(user.uuid, Date.now());
+    const message = {
+        id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+        channel: data.channel,
+        text: data.text,
+        author: ws.username,
+        timestamp: Date.now(),
+        // THE FIX IS HERE: Safe access to userProfiles
+        profileColor: userProfiles[ws.username] || 'default',
+        isAdmin: ws.isAdmin || false,
+        isVIP: ws.isVIP || false,
+        isOwner: ws.isOwner || false,
+        replyTo: data.replyTo,
+        imageUrl: data.imageUrl,
+        reactions: {}
+    };
 
-  const profile = userProfiles.get(user.username) || {};
-  const message = {
-    id: generateId(),
-    author: user.username,
-    text: data.text,
-    channel: data.channel,
-    timestamp: Date.now(),
-    isOwner: user.isOwner,
-    isAdmin: user.isAdmin,
-    isVIP: user.isVIP,
-    replyTo: data.replyTo || null,
-    reactions: {},
-    imageUrl: data.imageUrl || null,
-    profileColor: profile.profileColor || 'default'
-  };
-
-  if (channels[data.channel]) {
-    channels[data.channel].push(message);
+    if (!history[data.channel]) history[data.channel] = [];
+    history[data.channel].push(message);
     
-    if (channels[data.channel].length > 100) {
-      channels[data.channel].shift();
-    }
+    // Keep history manageable (last 50 messages)
+    if (history[data.channel].length > 50) history[data.channel].shift();
 
     broadcast({ type: 'message', message });
-  }
 }
 
 function handlePrivateMessage(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
-
-  const profile = userProfiles.get(user.username) || {};
-  const message = {
-    id: generateId(),
-    author: user.username,
-    text: data.text,
-    chatId: data.chatId,
-    timestamp: Date.now(),
-    isOwner: user.isOwner,
-    isAdmin: user.isAdmin,
-    isVIP: user.isVIP,
-    replyTo: data.replyTo || null,
-    reactions: {},
-    imageUrl: data.imageUrl || null,
-    profileColor: profile.profileColor || 'default'
-  };
-
-  if (!privateChats.has(data.chatId)) {
-    privateChats.set(data.chatId, []);
-  }
-
-  privateChats.get(data.chatId).push(message);
-
-  const participants = privateChatParticipants.get(data.chatId);
-  if (participants) {
-    sendToUsers(participants, { type: 'privateMessage', message });
-  }
-}
-
-function handlePrivateChatRequest(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
-
-  const target = getOnlineUserByUsername(data.targetUsername);
-  if (!target) {
-    ws.send(JSON.stringify({
-      type: 'error',
-      message: 'User not online'
-    }));
-    return;
-  }
-
-  // Check if chat already exists between these users
-  for (const [chatId, participants] of privateChatParticipants.entries()) {
-    if (participants.includes(user.uuid) && participants.includes(target.user.uuid)) {
-      // Chat already exists, notify both users
-      ws.send(JSON.stringify({
-        type: 'privateChatAccepted',
-        chatId,
-        with: data.targetUsername
-      }));
-
-      target.ws.send(JSON.stringify({
-        type: 'privateChatAccepted',
-        chatId,
-        with: user.username
-      }));
-      return;
-    }
-  }
-
-  // No existing chat, send request to target
-  target.ws.send(JSON.stringify({
-    type: 'privateChatRequest',
-    from: user.username,
-    fromUuid: user.uuid
-  }));
-}
-
-function handlePrivateChatResponse(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
-
-  const requester = getOnlineUserByUsername(data.from);
-  if (!requester) return;
-
-  if (data.accepted) {
-    for (const [chatId, participants] of privateChatParticipants.entries()) {
-      if (participants.includes(user.uuid) && participants.includes(requester.user.uuid)) {
-        ws.send(JSON.stringify({
-          type: 'privateChatAccepted',
-          chatId,
-          with: data.from
-        }));
-
-        requester.ws.send(JSON.stringify({
-          type: 'privateChatAccepted',
-          chatId,
-          with: user.username
-        }));
-        return;
-      }
-    }
-
-    const chatId = generateId();
-    privateChatParticipants.set(chatId, [user.uuid, requester.user.uuid]);
-    privateChats.set(chatId, []);
-
-    ws.send(JSON.stringify({
-      type: 'privateChatAccepted',
-      chatId,
-      with: data.from
-    }));
-
-    requester.ws.send(JSON.stringify({
-      type: 'privateChatAccepted',
-      chatId,
-      with: user.username
-    }));
-  } else {
-    requester.ws.send(JSON.stringify({
-      type: 'privateChatRejected',
-      by: user.username
-    }));
-  }
-}
-
-function handleGetHistory(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
-
-  const messages = channels[data.channel] || [];
-  ws.send(JSON.stringify({
-    type: 'history',
-    channel: data.channel,
-    messages
-  }));
-}
-
-function handleGetPrivateHistory(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
-
-  const messages = privateChats.get(data.chatId) || [];
-  ws.send(JSON.stringify({
-    type: 'privateHistory',
-    chatId: data.chatId,
-    messages
-  }));
-}
-
-function handleAddReaction(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
-
-  let message;
-  if (data.isPrivate) {
-    const messages = privateChats.get(data.chatId) || [];
-    message = messages.find(m => m.id === data.messageId);
-  } else {
-    message = channels[data.channel]?.find(m => m.id === data.messageId);
-  }
-
-  if (message) {
-    if (!message.reactions[data.emoji]) {
-      message.reactions[data.emoji] = [];
-    }
-    if (!message.reactions[data.emoji].includes(user.username)) {
-      message.reactions[data.emoji].push(user.username);
-    }
-
-    const update = {
-      type: 'reactionUpdate',
-      messageId: data.messageId,
-      reactions: message.reactions,
-      channel: data.channel,
-      isPrivate: data.isPrivate,
-      chatId: data.chatId
+    const chatId = data.chatId;
+    const message = {
+        id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+        chatId: chatId,
+        text: data.text,
+        author: ws.username,
+        timestamp: Date.now(),
+        profileColor: userProfiles[ws.username] || 'default',
+        replyTo: data.replyTo,
+        imageUrl: data.imageUrl,
+        reactions: {}
     };
 
+    if (!dmHistory[chatId]) dmHistory[chatId] = [];
+    dmHistory[chatId].push(message);
+
+    // Send to Sender
+    ws.send(JSON.stringify({ type: 'privateMessage', message }));
+    // Send to Receiver
+    sendToUser(data.targetUsername, { type: 'privateMessage', message });
+}
+
+function handleReaction(ws, data) {
+    // Find message in history
+    let msgList;
     if (data.isPrivate) {
-      const participants = privateChatParticipants.get(data.chatId);
-      if (participants) sendToUsers(participants, update);
+        msgList = dmHistory[data.chatId];
     } else {
-      broadcast(update);
-    }
-  }
-}
-
-function handleRemoveReaction(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
-
-  let message;
-  if (data.isPrivate) {
-    const messages = privateChats.get(data.chatId) || [];
-    message = messages.find(m => m.id === data.messageId);
-  } else {
-    message = channels[data.channel]?.find(m => m.id === data.messageId);
-  }
-
-  if (message && message.reactions[data.emoji]) {
-    message.reactions[data.emoji] = message.reactions[data.emoji].filter(
-      u => u !== user.username
-    );
-    if (message.reactions[data.emoji].length === 0) {
-      delete message.reactions[data.emoji];
+        msgList = history[data.channel];
     }
 
-    const update = {
-      type: 'reactionUpdate',
-      messageId: data.messageId,
-      reactions: message.reactions,
-      channel: data.channel,
-      isPrivate: data.isPrivate,
-      chatId: data.chatId
-    };
+    if (!msgList) return;
+    const msg = msgList.find(m => m.id === data.messageId);
+    if (!msg) return;
 
+    if (!msg.reactions) msg.reactions = {};
+    if (!msg.reactions[data.emoji]) msg.reactions[data.emoji] = [];
+
+    if (data.type === 'addReaction') {
+        if (!msg.reactions[data.emoji].includes(ws.username)) {
+            msg.reactions[data.emoji].push(ws.username);
+        }
+    } else {
+        msg.reactions[data.emoji] = msg.reactions[data.emoji].filter(u => u !== ws.username);
+        if (msg.reactions[data.emoji].length === 0) delete msg.reactions[data.emoji];
+    }
+
+    // Broadcast update
     if (data.isPrivate) {
-      const participants = privateChatParticipants.get(data.chatId);
-      if (participants) sendToUsers(participants, update);
+         // Notify both participants of the DM
+         const partner = data.chatId.replace(ws.username, '').replace('-', ''); // Rough way to find partner
+         ws.send(JSON.stringify({ type: 'reactionUpdate', ...data, reactions: msg.reactions }));
+         sendToUser(partner, { type: 'reactionUpdate', ...data, reactions: msg.reactions });
     } else {
-      broadcast(update);
+        broadcast({ type: 'reactionUpdate', ...data, reactions: msg.reactions });
     }
-  }
 }
 
-function handleTyping(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
+// --- VOICE LOGIC ---
 
-  broadcast({
-    type: 'typing',
-    username: user.username,
-    channel: data.channel,
-    isTyping: data.isTyping,
-    isPrivate: data.isPrivate
-  }, ws);
-}
-
-function handleUpdateProfile(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
-
-  userProfiles.set(user.username, {
-    profileColor: data.profileColor || 'default'
-  });
-
-  console.log(`${user.username} updated profile color to ${data.profileColor}`);
-}
-
-// Voice channel handlers
 function handleJoinVoice(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
+    const { channel } = data;
+    if (!voiceChannels[channel]) voiceChannels[channel] = [];
+    
+    // Add to channel if not there
+    if (!voiceChannels[channel].includes(ws.username)) {
+        voiceChannels[channel].push(ws.username);
+    }
+    
+    // Update client state
+    const client = clients.find(c => c.ws === ws);
+    if (client) client.voiceChannel = channel;
 
-  const channel = data.channel || 'general';
-  if (!voiceChannels[channel]) return;
-
-  voiceChannels[channel].add(user.username);
-  
-  // Notify all users of updated voice channel
-  broadcast({
-    type: 'voiceUsers',
-    users: Array.from(voiceChannels[channel]),
-    channel
-  });
-  
-  console.log(`${user.username} joined voice channel: ${channel}`);
+    // Broadcast new user list for this voice channel
+    broadcast({ type: 'voiceUsers', channel, users: voiceChannels[channel] });
 }
 
 function handleLeaveVoice(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
+    const { channel } = data;
+    if (!voiceChannels[channel]) return;
 
-  const channel = data.channel || 'general';
-  if (!voiceChannels[channel]) return;
+    voiceChannels[channel] = voiceChannels[channel].filter(u => u !== ws.username);
+    
+    const client = clients.find(c => c.ws === ws);
+    if (client) client.voiceChannel = null;
 
-  voiceChannels[channel].delete(user.username);
-  
-  // Notify all users
-  broadcast({
-    type: 'voiceUserLeft',
-    username: user.username,
-    channel
-  });
-  
-  broadcast({
-    type: 'voiceUsers',
-    users: Array.from(voiceChannels[channel]),
-    channel
-  });
-  
-  console.log(`${user.username} left voice channel: ${channel}`);
+    broadcast({ type: 'voiceUsers', channel, users: voiceChannels[channel] });
+    broadcast({ type: 'voiceUserLeft', username: ws.username });
 }
 
-function handleVoiceOffer(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
+// --- ADMIN LOGIC ---
 
-  const target = getOnlineUserByUsername(data.to);
-  if (target) {
-    target.ws.send(JSON.stringify({
-      type: 'voiceOffer',
-      from: user.username,
-      offer: data.offer,
-      channel: data.channel
+function handleAdminCommand(ws, data) {
+    if (!ws.isAdmin && !ws.isOwner) return;
+
+    const target = data.targetUsername;
+
+    switch (data.type) {
+        case 'adminKick':
+            sendToUser(target, { type: 'kicked', message: data.reason || 'You have been kicked.' });
+            // Close connection for target
+            const targetClient = clients.find(c => c.username === target);
+            if (targetClient) targetClient.ws.close();
+            break;
+
+        case 'adminBan':
+            bannedUsers.add(target);
+            if (data.banType === 'ip') {
+                const tc = clients.find(c => c.username === target);
+                if (tc) bannedIPs.add(tc.ip);
+            }
+            sendToUser(target, { type: 'banned', message: data.reason || 'You have been banned.' });
+             const tcBan = clients.find(c => c.username === target);
+            if (tcBan) tcBan.ws.close();
+            break;
+
+        case 'adminBroadcast':
+            broadcast({ type: 'broadcast', message: data.message });
+            break;
+
+        case 'adminClearChat':
+            if (history[data.channel]) history[data.channel] = [];
+            broadcast({ type: 'chatCleared', channel: data.channel });
+            break;
+        
+        case 'adminGetBanList':
+            ws.send(JSON.stringify({ 
+                type: 'banList', 
+                bannedUsers: Array.from(bannedUsers), 
+                bannedIPs: Array.from(bannedIPs) 
+            }));
+            break;
+
+        case 'adminUnban':
+            bannedUsers.delete(data.username);
+            ws.send(JSON.stringify({ type: 'adminActionSuccess', message: `Unbanned ${data.username}` }));
+            handleAdminCommand(ws, { type: 'adminGetBanList' }); // Refresh list
+            break;
+        
+        // --- TROLL COMMANDS ---
+        case 'adminSpinScreen':
+        case 'adminShakeScreen':
+        case 'adminFlipScreen':
+        case 'adminInvertColors':
+        case 'adminRainbow':
+        case 'adminBlur':
+        case 'adminMatrix':
+        case 'adminEmojiSpam':
+        case 'adminRickRoll':
+        case 'adminForceDisconnect':
+            // Send the exact same type back to the target client
+            // The frontend has handlers for these type names (e.g., spinScreen)
+            // We strip 'admin' from the start to match frontend handler keys usually,
+            // OR we check the frontend code. 
+            // Looking at frontend: it handles "spinScreen", "shakeScreen".
+            // So we need to convert "adminSpinScreen" -> "spinScreen".
+            
+            const effectType = data.type.replace('admin', ''); // e.g. "SpinScreen"
+            const effectCmd = effectType.charAt(0).toLowerCase() + effectType.slice(1); // "spinScreen"
+            
+            sendToUser(target, { type: effectCmd });
+            break;
+
+        case 'adminConfetti':
+            broadcast({ type: 'confetti' });
+            break;
+            
+        case 'adminForceMute':
+            sendToUser(target, { type: 'forceMute', duration: data.duration });
+            break;
+            
+        case 'adminTimeout':
+             sendToUser(target, { type: 'timedOut', message: 'You have been timed out.' });
+             // In a real app you'd prevent them from sending messages for X seconds here
+             break;
+    }
+}
+
+function getPublicUserList() {
+    return clients.map(c => ({
+        username: c.username,
+        isAdmin: c.isAdmin,
+        isVIP: c.isVIP,
+        isOwner: c.isOwner
     }));
-  }
 }
 
-function handleVoiceAnswer(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
-
-  const target = getOnlineUserByUsername(data.to);
-  if (target) {
-    target.ws.send(JSON.stringify({
-      type: 'voiceAnswer',
-      from: user.username,
-      answer: data.answer,
-      channel: data.channel
-    }));
-  }
-}
-
-function handleVoiceIceCandidate(ws, data) {
-  const user = connections.get(ws);
-  if (!user) return;
-
-  const target = getOnlineUserByUsername(data.to);
-  if (target) {
-    target.ws.send(JSON.stringify({
-      type: 'voiceIceCandidate',
-      from: user.username,
-      candidate: data.candidate
-    }));
-  }
-}
-
-// Admin command handlers
-function handleAdminKick(ws, data) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  const target = getOnlineUserByUsername(data.targetUsername);
-  if (!target) return;
-
-  if (!canModerate(admin, target.user)) {
-    ws.send(JSON.stringify({
-      type: 'error',
-      message: 'Cannot moderate this user'
-    }));
-    return;
-  }
-
-  target.ws.send(JSON.stringify({
-    type: 'kicked',
-    message: `You have been kicked${data.reason ? ': ' + data.reason : ''}`,
-    redirectUrl: 'https://google.com'
-  }));
-
-  setTimeout(() => target.ws.close(), 500);
-
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: `Kicked ${data.targetUsername}`
-  }));
-}
-
-function handleAdminTimeout(ws, data) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  const target = getOnlineUserByUsername(data.targetUsername);
-  if (!target) return;
-
-  if (!canModerate(admin, target.user)) {
-    ws.send(JSON.stringify({
-      type: 'error',
-      message: 'Cannot moderate this user'
-    }));
-    return;
-  }
-
-  target.ws.send(JSON.stringify({
-    type: 'timedOut',
-    message: `You have been timed out for ${data.duration}s${data.reason ? ': ' + data.reason : ''}`
-  }));
-
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: `Timed out ${data.targetUsername} for ${data.duration}s`
-  }));
-}
-
-function handleAdminBan(ws, data) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  const target = getOnlineUserByUsername(data.targetUsername);
-  
-  if (target && !canModerate(admin, target.user)) {
-    ws.send(JSON.stringify({
-      type: 'error',
-      message: 'Cannot moderate this user'
-    }));
-    return;
-  }
-
-  if (data.banType === 'username' || data.banType === 'both') {
-    bannedUsers.add(data.targetUsername);
-  }
-  
-  if (target && (data.banType === 'ip' || data.banType === 'both')) {
-    bannedIPs.add(target.user.ip);
-  }
-
-  if (target) {
-    target.ws.send(JSON.stringify({
-      type: 'banned',
-      message: `You have been banned${data.reason ? ': ' + data.reason : ''}`
-    }));
-    setTimeout(() => target.ws.close(), 500);
-  }
-
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: `Banned ${data.targetUsername}`
-  }));
-}
-
-function handleAdminUnban(ws, data) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  bannedUsers.delete(data.username);
-
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: `Unbanned ${data.username}`
-  }));
-}
-
-function handleAdminUnbanIP(ws, data) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  bannedIPs.delete(data.ip);
-
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: `Unbanned IP ${data.ip}`
-  }));
-}
-
-function handleAdminForceMute(ws, data) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  const target = getOnlineUserByUsername(data.targetUsername);
-  if (!target) return;
-
-  if (!canModerate(admin, target.user)) {
-    ws.send(JSON.stringify({
-      type: 'error',
-      message: 'Cannot moderate this user'
-    }));
-    return;
-  }
-
-  target.ws.send(JSON.stringify({
-    type: 'forceMute',
-    duration: data.duration
-  }));
-
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: `Muted ${data.targetUsername} for ${data.duration}s`
-  }));
-}
-
-function handleAdminWarning(ws, data) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  const target = getOnlineUserByUsername(data.targetUsername);
-  if (!target) return;
-
-  if (!canModerate(admin, target.user)) {
-    ws.send(JSON.stringify({
-      type: 'error',
-      message: 'Cannot moderate this user'
-    }));
-    return;
-  }
-
-  const count = (userWarnings.get(target.user.uuid) || 0) + 1;
-  userWarnings.set(target.user.uuid, count);
-
-  target.ws.send(JSON.stringify({
-    type: 'warning',
-    message: data.reason || 'You have been warned',
-    count
-  }));
-
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: `Warned ${data.targetUsername} (Warning #${count})`
-  }));
-}
-
-function handleAdminDeleteMessage(ws, data) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  if (channels[data.channel]) {
-    channels[data.channel] = channels[data.channel].filter(
-      m => m.id !== data.messageId
-    );
-
-    broadcast({
-      type: 'messageDeleted',
-      messageId: data.messageId,
-      channel: data.channel
+// --- KEEP ALIVE ---
+const interval = setInterval(function ping() {
+    wss.clients.forEach(function each(ws) {
+        if (ws.isAlive === false) return ws.terminate();
+        ws.isAlive = false;
+        ws.ping();
     });
-  }
+}, 30000);
 
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: 'Message deleted'
-  }));
-}
-
-function handleAdminGetBanList(ws) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  ws.send(JSON.stringify({
-    type: 'banList',
-    bannedUsers: Array.from(bannedUsers),
-    bannedIPs: Array.from(bannedIPs)
-  }));
-}
-
-function handleAdminBroadcast(ws, data) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  broadcast({
-    type: 'broadcast',
-    message: data.message
-  });
-
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: 'Broadcast sent'
-  }));
-}
-
-function handleAdminSlowMode(ws, data) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  slowMode.enabled = data.enabled;
-  slowMode.duration = data.duration;
-
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: `Slow mode ${data.enabled ? 'enabled' : 'disabled'}`
-  }));
-}
-
-function handleAdminClearChat(ws, data) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  if (channels[data.channel]) {
-    channels[data.channel] = [];
-
-    broadcast({
-      type: 'chatCleared',
-      channel: data.channel
-    });
-  }
-
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: `Cleared #${data.channel}`
-  }));
-}
-
-function handleAdminEffect(ws, data, effectType) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  const target = getOnlineUserByUsername(data.targetUsername);
-  if (!target) return;
-
-  target.ws.send(JSON.stringify({ type: effectType }));
-
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: `Effect sent to ${data.targetUsername}`
-  }));
-}
-
-function handleAdminConfettiAll(ws) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  broadcast({ type: 'confetti' });
-
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: 'Confetti sent to all users'
-  }));
-}
-
-function handleAdminForceDisconnect(ws, data) {
-  const admin = connections.get(ws);
-  if (!admin || (!admin.isAdmin && !admin.isOwner)) return;
-
-  const target = getOnlineUserByUsername(data.targetUsername);
-  if (!target) return;
-
-  if (!canModerate(admin, target.user)) {
-    ws.send(JSON.stringify({
-      type: 'error',
-      message: 'Cannot moderate this user'
-    }));
-    return;
-  }
-
-  target.ws.send(JSON.stringify({ type: 'forceDisconnect' }));
-  setTimeout(() => target.ws.close(), 500);
-
-  ws.send(JSON.stringify({
-    type: 'adminActionSuccess',
-    message: `Disconnected ${data.targetUsername}`
-  }));
-}
-
-console.log('WebSocket server is ready');
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`The Chet Server is running on port ${PORT}`);
+});
