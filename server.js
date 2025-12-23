@@ -285,6 +285,22 @@ function handleChannelMessage(ws, data) {
 
   messageTimestamps.set(user.uuid, Date.now());
 
+  const profile = userProfiles.get(user.username) || {};
+  const message = {
+    id: generateId(),
+    author: user.username,
+    text: data.text,
+    channel: data.channel,
+    timestamp: Date.now(),
+    isOwner: user.isOwner,
+    isAdmin: user.isAdmin,
+    isVIP: user.isVIP,
+    replyTo: data.replyTo || null,
+    reactions: {},
+    imageUrl: data.imageUrl || null,
+    profileColor: profile.profileColor || 'default'
+  };
+
   if (channels[data.channel]) {
     channels[data.channel].push(message);
     
