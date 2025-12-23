@@ -40,7 +40,10 @@ const voiceChannels = {
   chill: new Set(),
   gaming: new Set()
 };
+// ADD THIS LINE - this was missing!
+const userProfiles = new Map();
 
+// Rest of your code remains the same...
 // Passwords
 const PASSWORDS = {
   owner: '10owna12',
