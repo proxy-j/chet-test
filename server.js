@@ -185,6 +185,9 @@ function handleMessage(ws, data, clientIP) {
     voiceAnswer: handleVoiceAnswer,
     voiceIceCandidate: handleVoiceIceCandidate,
     
+    // Profile
+    updateProfile: handleUpdateProfile,
+    
     // Admin commands
     adminKick: handleAdminKick,
     adminTimeout: handleAdminTimeout,
@@ -282,6 +285,7 @@ function handleChannelMessage(ws, data) {
 
   messageTimestamps.set(user.uuid, Date.now());
 
+  const profile = userProfiles.get(user.username) || {};
   const message = {
     id: generateId(),
     author: user.username,
@@ -293,7 +297,8 @@ function handleChannelMessage(ws, data) {
     isVIP: user.isVIP,
     replyTo: data.replyTo || null,
     reactions: {},
-    imageUrl: data.imageUrl || null
+    imageUrl: data.imageUrl || null,
+    profileColor: profile.profileColor || 'default'
   };
 
   if (channels[data.channel]) {
@@ -311,6 +316,7 @@ function handlePrivateMessage(ws, data) {
   const user = connections.get(ws);
   if (!user) return;
 
+  const profile = userProfiles.get(user.username) || {};
   const message = {
     id: generateId(),
     author: user.username,
@@ -322,7 +328,8 @@ function handlePrivateMessage(ws, data) {
     isVIP: user.isVIP,
     replyTo: data.replyTo || null,
     reactions: {},
-    imageUrl: data.imageUrl || null
+    imageUrl: data.imageUrl || null,
+    profileColor: profile.profileColor || 'default'
   };
 
   if (!privateChats.has(data.chatId)) {
