@@ -354,6 +354,15 @@ body.light-theme .notif-body{color:#2e3338}
 <div class="settings-section-title">Notifications</div>
 <div class="settings-option">
 <div>
+<div class="settings-option-label">Off</div>
+<div class="settings-option-desc">Disable all notifications</div>
+</div>
+<div class="settings-toggle" id="notifOffToggle">
+<div class="settings-toggle-slider"></div>
+</div>
+</div>
+<div class="settings-option">
+<div>
 <div class="settings-option-label">DM Notifications Only</div>
 <div class="settings-option-desc">Only notify for direct messages</div>
 </div>
@@ -1266,6 +1275,12 @@ userSettings=JSON.parse(savedSettings);
 applySettings();
 }
 
+// Load notification preference
+const savedNotif=localStorage.getItem('notificationsEnabled');
+if(savedNotif){
+notificationsEnabled=savedNotif;
+}
+
 $('loginOverlay').style.display='none';
 console.log('Requesting notification permission...');
 await requestNotifPerm();
@@ -1290,6 +1305,7 @@ send({type:'updateProfile',profileColor:userSettings.profileColor});
 }
 
 function updateSettingsUI(){
+$('notifOffToggle').classList.toggle('active',notificationsEnabled==='none');
 $('notifDMToggle').classList.toggle('active',notificationsEnabled==='dm');
 $('notifAllToggle').classList.toggle('active',notificationsEnabled==='all');
 $('profanityToggle').classList.toggle('active',userSettings.profanityFilter);
@@ -1337,9 +1353,18 @@ updateSettingsUI();
 $('closeSettings').onclick=()=>$('settingsPanel').classList.remove('show');
 
 // Settings handlers
+$('notifOffToggle').onclick=()=>{
+notificationsEnabled='none';
+$('notifAllToggle').classList.remove('active');
+$('notifDMToggle').classList.remove('active');
+$('notifOffToggle').classList.add('active');
+localStorage.setItem('notificationsEnabled','none');
+};
+
 $('notifDMToggle').onclick=()=>{
 notificationsEnabled='dm';
 $('notifAllToggle').classList.remove('active');
+$('notifOffToggle').classList.remove('active');
 $('notifDMToggle').classList.add('active');
 localStorage.setItem('notificationsEnabled','dm');
 };
@@ -1347,6 +1372,7 @@ localStorage.setItem('notificationsEnabled','dm');
 $('notifAllToggle').onclick=()=>{
 notificationsEnabled='all';
 $('notifDMToggle').classList.remove('active');
+$('notifOffToggle').classList.remove('active');
 $('notifAllToggle').classList.add('active');
 localStorage.setItem('notificationsEnabled','all');
 };
