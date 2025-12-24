@@ -668,6 +668,18 @@ let hasUnread=false,isTabVisible=true,selectedBanType='ip',selectedImage=null,no
 let currentVoiceChannel=null,localStream=null,isMuted=false,peerConnections={},voiceChannelData={};
 let userSettings={profileColor:'default',profanityFilter:false,messageGrouping:false,lightTheme:false};
 
+function filterProfanity(text) {
+  if (!userSettings.profanityFilter) return text;
+  const badWords = ['fuck', 'shit', 'damn', 'hell', 'ass', 'bitch', 'bastard', 'nigga', 'nigger', 'faggot', 'n1gga', 'n1gger', 'nigg@', 'n1gg@', '$hit', 'sh1t', '$h1t', 'a$s', 'as$', 'a$$', 'b1tch', 'fuk', 'fuc', 'cock', 'c0ck', 'dick', 'dik', 'dic', 'd1ck', 'd1k', 'd1c', 'cunt', 'tit'];
+  let filtered = text;
+  badWords.forEach(word => {
+    const regex = new RegExp(word, 'gi');
+    filtered = filtered.replace(regex, '*'.repeat(word.length));
+  });
+  return filtered;
+}
+
+document.addEventListener('visibilitychange',()=>{isTabVisible=!document.hidden;if(isTabVisible){clearFaviconNotif()}});
 document.addEventListener('visibilitychange',()=>{isTabVisible=!document.hidden;if(isTabVisible){clearFaviconNotif()}});
 
 // Request notification permission
